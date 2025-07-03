@@ -1,0 +1,619 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AE0661CD2DB3C6660039ED64 /* command_lookup.csv in Resources */ = {isa = PBXBuildFile; fileRef = AE0661CC2DB3C6660039ED64 /* command_lookup.csv */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AEA070BB2D98833A003CEC4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AEA070A22D988338003CEC4C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AEA070A92D988338003CEC4C;
+			remoteInfo = rallie;
+		};
+		AEA070C52D98833A003CEC4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AEA070A22D988338003CEC4C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AEA070A92D988338003CEC4C;
+			remoteInfo = rallie;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		AE0661CC2DB3C6660039ED64 /* command_lookup.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = command_lookup.csv; sourceTree = "<group>"; };
+		AEA070AA2D988338003CEC4C /* rallie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = rallie.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AEA070BA2D98833A003CEC4C /* rallieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = rallieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AEA070C42D98833A003CEC4C /* rallieUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = rallieUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AEA070ED2D98F261003CEC4C /* Exceptions for "rallie" folder in "rallie" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AEA070A92D988338003CEC4C /* rallie */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AEA070AC2D988338003CEC4C /* rallie */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AEA070ED2D98F261003CEC4C /* Exceptions for "rallie" folder in "rallie" target */,
+			);
+			path = rallie;
+			sourceTree = "<group>";
+		};
+		AEA070BD2D98833A003CEC4C /* rallieTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = rallieTests;
+			sourceTree = "<group>";
+		};
+		AEA070C72D98833A003CEC4C /* rallieUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = rallieUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AEA070A72D988338003CEC4C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070B72D98833A003CEC4C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070C12D98833A003CEC4C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AEA070A12D988338003CEC4C = {
+			isa = PBXGroup;
+			children = (
+				AEA070AC2D988338003CEC4C /* rallie */,
+				AEA070BD2D98833A003CEC4C /* rallieTests */,
+				AEA070C72D98833A003CEC4C /* rallieUITests */,
+				AEA070AB2D988338003CEC4C /* Products */,
+				AE0661CC2DB3C6660039ED64 /* command_lookup.csv */,
+			);
+			sourceTree = "<group>";
+		};
+		AEA070AB2D988338003CEC4C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AEA070AA2D988338003CEC4C /* rallie.app */,
+				AEA070BA2D98833A003CEC4C /* rallieTests.xctest */,
+				AEA070C42D98833A003CEC4C /* rallieUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AEA070A92D988338003CEC4C /* rallie */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AEA070CE2D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallie" */;
+			buildPhases = (
+				AEA070A62D988338003CEC4C /* Sources */,
+				AEA070A72D988338003CEC4C /* Frameworks */,
+				AEA070A82D988338003CEC4C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AEA070AC2D988338003CEC4C /* rallie */,
+			);
+			name = rallie;
+			packageProductDependencies = (
+			);
+			productName = rallie;
+			productReference = AEA070AA2D988338003CEC4C /* rallie.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AEA070B92D98833A003CEC4C /* rallieTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AEA070D12D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallieTests" */;
+			buildPhases = (
+				AEA070B62D98833A003CEC4C /* Sources */,
+				AEA070B72D98833A003CEC4C /* Frameworks */,
+				AEA070B82D98833A003CEC4C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AEA070BC2D98833A003CEC4C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AEA070BD2D98833A003CEC4C /* rallieTests */,
+			);
+			name = rallieTests;
+			packageProductDependencies = (
+			);
+			productName = rallieTests;
+			productReference = AEA070BA2D98833A003CEC4C /* rallieTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		AEA070C32D98833A003CEC4C /* rallieUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AEA070D42D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallieUITests" */;
+			buildPhases = (
+				AEA070C02D98833A003CEC4C /* Sources */,
+				AEA070C12D98833A003CEC4C /* Frameworks */,
+				AEA070C22D98833A003CEC4C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AEA070C62D98833A003CEC4C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AEA070C72D98833A003CEC4C /* rallieUITests */,
+			);
+			name = rallieUITests;
+			packageProductDependencies = (
+			);
+			productName = rallieUITests;
+			productReference = AEA070C42D98833A003CEC4C /* rallieUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AEA070A22D988338003CEC4C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					AEA070A92D988338003CEC4C = {
+						CreatedOnToolsVersion = 16.2;
+						LastSwiftMigration = 1620;
+					};
+					AEA070B92D98833A003CEC4C = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = AEA070A92D988338003CEC4C;
+					};
+					AEA070C32D98833A003CEC4C = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = AEA070A92D988338003CEC4C;
+					};
+				};
+			};
+			buildConfigurationList = AEA070A52D988338003CEC4C /* Build configuration list for PBXProject "rallie" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AEA070A12D988338003CEC4C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AEA070AB2D988338003CEC4C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AEA070A92D988338003CEC4C /* rallie */,
+				AEA070B92D98833A003CEC4C /* rallieTests */,
+				AEA070C32D98833A003CEC4C /* rallieUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AEA070A82D988338003CEC4C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AE0661CD2DB3C6660039ED64 /* command_lookup.csv in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070B82D98833A003CEC4C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070C22D98833A003CEC4C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AEA070A62D988338003CEC4C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070B62D98833A003CEC4C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AEA070C02D98833A003CEC4C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AEA070BC2D98833A003CEC4C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AEA070A92D988338003CEC4C /* rallie */;
+			targetProxy = AEA070BB2D98833A003CEC4C /* PBXContainerItemProxy */;
+		};
+		AEA070C62D98833A003CEC4C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AEA070A92D988338003CEC4C /* rallie */;
+			targetProxy = AEA070C52D98833A003CEC4C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AEA070CC2D98833A003CEC4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AEA070CD2D98833A003CEC4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AEA070CF2D98833A003CEC4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"rallie/Preview Content\"";
+				DEVELOPMENT_TEAM = 869BNUC264;
+				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/rallie/Frameworks/**",
+					"$(PROJECT_DIR)/rallie/Frameworks",
+					"$(PROJECT_DIR)/rallie",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = rallie/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "We use your camera to detect your position on the tennis court.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationLandscapeRight;
+				IPHONEOS_DEPLOYMENT_TARGET = 15;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.demo.TennisApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "rallie/Utils/rallie-Bridging-Header.h";
+				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "rallie/rallie-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AEA070D02D98833A003CEC4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"rallie/Preview Content\"";
+				DEVELOPMENT_TEAM = 869BNUC264;
+				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/rallie/Frameworks/**",
+					"$(PROJECT_DIR)/rallie/Frameworks",
+					"$(PROJECT_DIR)/rallie",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = rallie/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "We use your camera to detect your position on the tennis court.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationLandscapeRight;
+				IPHONEOS_DEPLOYMENT_TARGET = 15;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.demo.TennisApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "rallie/Utils/rallie-Bridging-Header.h";
+				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "rallie/rallie-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AEA070D22D98833A003CEC4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WSVWAL7TDR;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sophieee.rallieTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/rallie.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/rallie";
+			};
+			name = Debug;
+		};
+		AEA070D32D98833A003CEC4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WSVWAL7TDR;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sophieee.rallieTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/rallie.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/rallie";
+			};
+			name = Release;
+		};
+		AEA070D52D98833A003CEC4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WSVWAL7TDR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sophieee.rallieUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = rallie;
+			};
+			name = Debug;
+		};
+		AEA070D62D98833A003CEC4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WSVWAL7TDR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sophieee.rallieUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = rallie;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AEA070A52D988338003CEC4C /* Build configuration list for PBXProject "rallie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEA070CC2D98833A003CEC4C /* Debug */,
+				AEA070CD2D98833A003CEC4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AEA070CE2D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallie" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEA070CF2D98833A003CEC4C /* Debug */,
+				AEA070D02D98833A003CEC4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AEA070D12D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallieTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEA070D22D98833A003CEC4C /* Debug */,
+				AEA070D32D98833A003CEC4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AEA070D42D98833A003CEC4C /* Build configuration list for PBXNativeTarget "rallieUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEA070D52D98833A003CEC4C /* Debug */,
+				AEA070D62D98833A003CEC4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AEA070A22D988338003CEC4C /* Project object */;
+}

@@ -1,0 +1,22 @@
+# Ignore OpenCV framework
+rallie-main-2/rallie/opencv2.framework/
+
+
+# Xcode build files
+DerivedData/
+build/
+
+# macOS system files
+.DS_Store
+
+# User settings
+*.xcuserdata
+*.xcuserstate
+rallie-main-2/rallie/opencv2.framework/
+rallie-main-2/rallie/Tennis30epochsCompleteTrainYolov5s.mlmodel
+rallie-main-2/rallie/YOLOv3FP16.mlmodel
+rallie/opencv2.framework/
+*.mlmodel
+DerivedData/
+.DS_Store
+build/
