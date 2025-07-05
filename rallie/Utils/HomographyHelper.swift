@@ -65,6 +65,10 @@ class HomographyHelper {
         var correctedX = rawProjected.x
         var correctedY = rawProjected.y
         
+        // Fix Y-axis inversion by flipping the Y coordinate
+        correctedY = courtLength - correctedY
+        print("🔄 Y-axis inverted: \(rawProjected.y) → \(correctedY)")
+        
         // X-coordinate correction (keep within reasonable bounds)
         if correctedX < -1.0 || correctedX > courtWidth + 1.0 {
             // Clamp to within 1 meter of court boundaries
