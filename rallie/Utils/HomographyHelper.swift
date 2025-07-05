@@ -39,21 +39,41 @@ class HomographyHelper {
         return matrix
     }
 
+    // /// ✅ New: Project a single screen point using matrix
+    // static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint]) -> CGPoint? {
+    //     // First check if point is within or very close to trapezoid
+    //     guard isPointInTrapezoid(point, corners: trapezoidCorners) else {
+    //         print("⚠️ Tap outside trapezoid: \(point)")
+    //         return nil
+    //     }
+        
+    //     // Project the raw point coordinates
+    //     guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
+    //         print("❌ Point projection failed for point: \(point)")
+    //         return nil
+    //     }
+        
+    //     print("📍 Projected point \(point) to \(projected)")
+    //     return projected as! CGPoint
+    // }
+
+
     /// ✅ New: Project a single screen point using matrix
     static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint]) -> CGPoint? {
-        // First check if point is within or very close to trapezoid
-        guard isPointInTrapezoid(point, corners: trapezoidCorners) else {
-            print("⚠️ Tap outside trapezoid: \(point)")
-            return nil
+        // Check if point is within trapezoid but don't return nil if it's not
+        let isInsideCourt = isPointInTrapezoid(point, corners: trapezoidCorners)
+        
+        if !isInsideCourt {
+            print("⚠️ Point outside trapezoid: \(point) - attempting projection anyway")
         }
         
-        // Project the raw point coordinates
+        // Project the raw point coordinates regardless of position
         guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
             print("❌ Point projection failed for point: \(point)")
             return nil
         }
         
-        print("📍 Projected point \(point) to \(projected)")
+        print("📍 Projected point \(point) to \(projected) - inside court: \(isInsideCourt)")
         return projected as! CGPoint
     }
 
