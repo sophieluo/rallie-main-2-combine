@@ -7,33 +7,35 @@ struct CalibrationPointsView: View {
         GeometryReader { geometry in
             ZStack {
                 // Draw court outline based on calibration points
-                if cameraController.calibrationPoints.count >= 4 {
+                if cameraController.calibrationPoints.count >= 8 {
                     // Court boundary
                     Path { path in
                         let p = cameraController.calibrationPoints
                         
-                        // Main court outline - using the correct point order
-                        path.move(to: p[0])  // Top left (net)
-                        path.addLine(to: p[1])  // Top right (net)
-                        path.addLine(to: p[3])  // Bottom right (baseline)
-                        path.addLine(to: p[2])  // Bottom left (baseline)
+                        // Main court outline - using the correct point order with clear naming
+                        // Point 0: Top-left corner (net, left sideline)
+                        // Point 1: Top-right corner (net, right sideline)
+                        // Point 2: Bottom-left corner (baseline, left sideline)
+                        // Point 3: Bottom-right corner (baseline, right sideline)
+                        // Point 4: T-point (center of service line)
+                        // Point 5: Left service line intersection
+                        // Point 6: Right service line intersection
+                        // Point 7: Center net point
+                        
+                        // Draw the main court outline
+                        path.move(to: p[0])    // Point 0: Top-left corner (net)
+                        path.addLine(to: p[1]) // Point 1: Top-right corner (net)
+                        path.addLine(to: p[3]) // Point 3: Bottom-right corner (baseline)
+                        path.addLine(to: p[2]) // Point 2: Bottom-left corner (baseline)
                         path.closeSubpath()
                         
-                        // Service line - horizontal line passing through T-point
-                        if p.count >= 7 {
-                            path.move(to: p[4])  // Left service
-                            path.addLine(to: p[5])  // Right service
-                        }
+                        // Draw the service line
+                        path.move(to: p[5])    // Point 5: Left service line intersection
+                        path.addLine(to: p[6]) // Point 6: Right service line intersection
                         
-                        // Center line - vertical line from net to baseline
-                        if p.count >= 8 {
-                            // Draw from net center to baseline using the x-coordinate of the T-point
-                            path.move(to: p[7])  // Net center
-                            
-                            // Extend the line through the T-point all the way to the baseline
-                            let baselineY = (p[2].y + p[3].y) / 2  // Average Y of baseline points
-                            path.addLine(to: CGPoint(x: p[6].x, y: baselineY))
-                        }
+                        // Draw the center line from net to T-point
+                        path.move(to: p[7])    // Point 7: Center net point
+                        path.addLine(to: p[4]) // Point 4: T-point (center service)
                     }
                     .stroke(Color.white.opacity(0.6), lineWidth: 1.5)
                 }

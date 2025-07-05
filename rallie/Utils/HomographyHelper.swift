@@ -48,6 +48,12 @@ class HomographyHelper {
             print("⚠️ Point outside trapezoid: \(point) - attempting projection anyway")
         }
         
+        // Debug: Print the homography matrix
+        // print("🔍 Using homography matrix:")
+        // for i in 0..<3 {
+        //     print("[\(matrix[i*3].doubleValue), \(matrix[i*3+1].doubleValue), \(matrix[i*3+2].doubleValue)]")
+        // }
+        
         // Project the raw point coordinates regardless of position
         guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
             print("❌ Point projection failed for point: \(point)")
@@ -56,6 +62,7 @@ class HomographyHelper {
         
         // Get the raw projected point
         let rawProjected = projected as! CGPoint
+        // print("🔄 Raw projected point: \(rawProjected)")
         
         // Tennis court dimensions (in meters)
         let courtWidth: CGFloat = 8.23  // Standard singles court width
@@ -65,37 +72,30 @@ class HomographyHelper {
         var correctedX = rawProjected.x
         var correctedY = rawProjected.y
         
-        // Fix Y-axis inversion by flipping the Y coordinate
-        correctedY = courtLength - correctedY
-        print("🔄 Y-axis inverted: \(rawProjected.y) → \(correctedY)")
-        
-        // Apply a systematic correction to the Y coordinate to fix the baseline projection issue
-        // This compensates for a consistent bias in the homography projection
-        // The correction is more aggressive near the baseline (where the issue is most visible)
-        let baselineBias = 1.8  // Meters to add to push points near baseline beyond it
-        let correctionFactor = min(1.0, correctedY / courtLength * 2.0)  // Increases as we approach baseline
-        let baselineCorrection = baselineBias * correctionFactor
-        correctedY = correctedY + baselineCorrection
-        print("📏 Applied baseline correction: +\(baselineCorrection) meters")
+        // No longer need to invert Y-axis since our coordinate system is now consistent
+        // print("🔄 Using raw Y coordinate: \(correctedY)")
         
         // X-coordinate correction (keep within reasonable bounds)
         if correctedX < -1.0 || correctedX > courtWidth + 1.0 {
             // Clamp to within 1 meter of court boundaries
+            let originalX = correctedX
             correctedX = max(-1.0, min(correctedX, courtWidth + 1.0))
-            print("⚠️ X coordinate clamped: \(rawProjected.x) → \(correctedX)")
+            print("⚠️ X coordinate clamped: \(originalX) → \(correctedX)")
         }
         
         // Y-coordinate correction (more complex due to common projection issues)
         if correctedY < -1.0 {
             // Point is projected beyond the net (negative Y)
             // Clamp to within 1 meter of net
+            let originalY = correctedY
             correctedY = -1.0
-            print("⚠️ Y beyond net clamped: \(rawProjected.y) → \(correctedY)")
-        } else if correctedY > courtLength + 2.0 {
+            // print("⚠️ Y beyond net clamped: \(originalY) → \(correctedY)")
+        } else if correctedY > courtLength + 3.0 {
             // Point is projected far beyond baseline
-            // Clamp to within 2 meters of baseline
-            correctedY = courtLength + 2.0
-            print("⚠️ Y far beyond baseline clamped: \(rawProjected.y) → \(correctedY)")
+            // Allow up to 3 meters behind baseline (was 2 meters)
+            let originalY = correctedY
+            correctedY = courtLength + 3.0
+            // print("⚠️ Y far beyond baseline clamped: \(originalY) → \(correctedY)")
         }
         
         let correctedPoint = CGPoint(x: correctedX, y: correctedY)

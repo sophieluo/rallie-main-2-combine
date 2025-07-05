@@ -5,6 +5,7 @@ import AVFoundation
 import UIKit
 import Vision
 import Combine
+import SwiftUI
 
 class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private let session = AVCaptureSession()
@@ -31,6 +32,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var homographyMatrix: [NSNumber]? = nil
     @Published var projectedPlayerPosition: CGPoint? = nil
     @Published var isTappingEnabled = true
+    
+    // Kalman filter for smoothing player position
+    private var playerPositionFilter: KalmanFilter?
     
     // MARK: - Calibration Points
     @Published var calibrationPoints: [CGPoint] = []
@@ -209,6 +213,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
         self.homographyMatrix = matrix
         
+        // Clear previous CSV data when calibration is completed
+        deleteCSVFile()
+        
         // Update court lines using the new homography
         let courtLines: [LineSegment] = [
             // Baseline (y = courtLength)
@@ -226,8 +233,11 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             // Service line
             LineSegment(start: CGPoint(x: 0, y: CourtLayout.serviceLineDistance), 
                         end: CGPoint(x: CourtLayout.courtWidth, y: CourtLayout.serviceLineDistance)),
-            // Center line - extend it from net to baseline to ensure it passes through the center T-point
+            // Center line - from net to T-point
             LineSegment(start: CGPoint(x: CourtLayout.courtWidth/2, y: 0), 
+                        end: CGPoint(x: CourtLayout.courtWidth/2, y: CourtLayout.serviceLineDistance)),
+            // Center line - from T-point to baseline
+            LineSegment(start: CGPoint(x: CourtLayout.courtWidth/2, y: CourtLayout.serviceLineDistance), 
                         end: CGPoint(x: CourtLayout.courtWidth/2, y: CourtLayout.courtLength))
         ]
         
@@ -261,14 +271,11 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return
         }
         
-//        playerDetector.processPixelBuffer(pixelBuffer)
-        
         objectDetector.detectObjects(in: pixelBuffer) { [weak self] detected in
                    guard let self = self else { return }
              self.detectedObjects = detected
               
         }
-
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self,
@@ -289,14 +296,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             }
             
             if let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners)) {
-                self.projectedPlayerPosition = projected
-                self.logPlayerPositionCSV(projected)
-                print("👟 Projected feet: \(projected)")
                 self.updatePlayerPosition(projected)
+                self.logPlayerPositionCSV(projected)
+                print("👟 Detected player position")
             }
-            
-            
-          
         }
     }
 
@@ -321,6 +324,64 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
     }
     
+    // For throttling position updates to LogicManager
+    private var lastPublishTime: Date? = nil
+    private let publishInterval: TimeInterval = 0.5 // Publish every 0.5 seconds
+    
+    private func updatePlayerPosition(_ point: CGPoint) {
+        DispatchQueue.main.async {
+            // Initialize Kalman filter with first position if needed
+            if self.playerPositionFilter == nil {
+                self.playerPositionFilter = KalmanFilter(
+                    initialPosition: point,
+                    positionUncertainty: 5.0,  // Moderate initial uncertainty
+                    velocityUncertainty: 10.0, // Higher velocity uncertainty
+                    processNoise: 0.05,        // Moderate process noise
+                    measurementNoise: 0.5      // Relatively low measurement noise (trust measurements)
+                )
+                print("🔄 Initialized Kalman filter with position: \(point)")
+            }
+            
+            // Update filter with new measurement and get smoothed position
+            let timestamp = Date().timeIntervalSince1970
+            let smoothedPosition = self.playerPositionFilter!.update(with: point, at: timestamp)
+            
+            // Always update the local property for internal use
+            self.projectedPlayerPosition = smoothedPosition
+            
+            // Only publish to LogicManager at the specified interval
+            let now = Date()
+            if self.lastPublishTime == nil || now.timeIntervalSince(self.lastPublishTime!) >= self.publishInterval {
+                self.playerPositionPublisher.send(smoothedPosition)
+                self.lastPublishTime = now
+                
+                // Enhanced logging for published positions
+                let formattedX = String(format: "%.2f", smoothedPosition.x)
+                let formattedY = String(format: "%.2f", smoothedPosition.y)
+                let courtPercentX = Int((smoothedPosition.x / CourtLayout.courtWidth) * 100)
+                let courtPercentY = Int((smoothedPosition.y / CourtLayout.courtLength) * 100)
+                
+                print("📊 Published position: (\(formattedX)m, \(formattedY)m) - \(courtPercentX)% across, \(courtPercentY)% down court")
+                
+                // Log velocity if available
+                if let filter = self.playerPositionFilter {
+                    let velocity = filter.currentVelocity
+                    let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
+                    let formattedSpeed = String(format: "%.2f", speed)
+                    print("🏃 Player speed: \(formattedSpeed) m/s")
+                }
+            }
+            
+            // Log the difference between raw and smoothed positions (only if significant)
+            let dx = smoothedPosition.x - point.x
+            let dy = smoothedPosition.y - point.y
+            let distance = sqrt(dx*dx + dy*dy)
+            if distance > 0.1 { // Only log if difference is significant
+                print("🧮 Kalman smoothing: diff=\(String(format: "%.2f", distance))m")
+            }
+        }
+    }
+
     private func logPlayerPositionCSV(_ point: CGPoint) {
         let now = Date()
 
@@ -374,13 +435,25 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             .first?
             .appendingPathComponent("player_positions.csv")
     }
-
-    let playerPositionPublisher = PassthroughSubject<CGPoint, Never>()
-
-    private func updatePlayerPosition(_ point: CGPoint) {
-        DispatchQueue.main.async {
-            self.projectedPlayerPosition = point
-            self.playerPositionPublisher.send(point) // ✅ broadcast position
+    
+    // Add method to delete the CSV file
+    func deleteCSVFile() {
+        guard let fileURL = getCSVFileURL() else {
+            print("❌ Could not get CSV file URL")
+            return
+        }
+        
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+                print("🗑️ Deleted existing CSV file to start fresh")
+            } else {
+                print("ℹ️ No existing CSV file to delete")
+            }
+        } catch {
+            print("❌ Error deleting CSV file: \(error.localizedDescription)")
         }
     }
+
+    let playerPositionPublisher = PassthroughSubject<CGPoint, Never>()
 }
