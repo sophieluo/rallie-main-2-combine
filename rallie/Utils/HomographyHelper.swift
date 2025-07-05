@@ -39,26 +39,7 @@ class HomographyHelper {
         return matrix
     }
 
-    // /// ✅ New: Project a single screen point using matrix
-    // static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint]) -> CGPoint? {
-    //     // First check if point is within or very close to trapezoid
-    //     guard isPointInTrapezoid(point, corners: trapezoidCorners) else {
-    //         print("⚠️ Tap outside trapezoid: \(point)")
-    //         return nil
-    //     }
-        
-    //     // Project the raw point coordinates
-    //     guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
-    //         print("❌ Point projection failed for point: \(point)")
-    //         return nil
-    //     }
-        
-    //     print("📍 Projected point \(point) to \(projected)")
-    //     return projected as! CGPoint
-    // }
-
-
-    /// ✅ New: Project a single screen point using matrix
+    /// Project a single screen point using matrix, with correction for out-of-bounds points
     static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint]) -> CGPoint? {
         // Check if point is within trapezoid but don't return nil if it's not
         let isInsideCourt = isPointInTrapezoid(point, corners: trapezoidCorners)
@@ -73,8 +54,49 @@ class HomographyHelper {
             return nil
         }
         
-        print("📍 Projected point \(point) to \(projected) - inside court: \(isInsideCourt)")
-        return projected as! CGPoint
+        // Get the raw projected point
+        let rawProjected = projected as! CGPoint
+        
+        // Tennis court dimensions (in meters)
+        let courtWidth: CGFloat = 8.23  // Standard singles court width
+        let courtLength: CGFloat = 11.885  // Standard court length (baseline to baseline)
+        
+        // Apply corrections for extreme values
+        var correctedX = rawProjected.x
+        var correctedY = rawProjected.y
+        
+        // X-coordinate correction (keep within reasonable bounds)
+        if correctedX < -1.0 || correctedX > courtWidth + 1.0 {
+            // Clamp to within 1 meter of court boundaries
+            correctedX = max(-1.0, min(correctedX, courtWidth + 1.0))
+            print("⚠️ X coordinate clamped: \(rawProjected.x) → \(correctedX)")
+        }
+        
+        // Y-coordinate correction (more complex due to common projection issues)
+        if correctedY < -1.0 {
+            // Point is projected beyond the net (negative Y)
+            // Clamp to within 1 meter of net
+            correctedY = -1.0
+            print("⚠️ Y beyond net clamped: \(rawProjected.y) → \(correctedY)")
+        } else if correctedY > courtLength + 1.0 {
+            // Point is projected beyond baseline
+            
+            // For extreme values like 19.623144149780273, apply special handling
+            if correctedY > courtLength * 1.5 {
+                // For values more than 50% beyond court length, place just beyond baseline
+                correctedY = courtLength + 1.0
+                print("🚨 Extreme Y value corrected: \(rawProjected.y) → \(correctedY)")
+            } else {
+                // For less extreme values, clamp to within 1 meter of baseline
+                correctedY = courtLength + 1.0
+                print("⚠️ Y beyond baseline clamped: \(rawProjected.y) → \(correctedY)")
+            }
+        }
+        
+        let correctedPoint = CGPoint(x: correctedX, y: correctedY)
+        
+        print("📍 Projected point \(point) to \(rawProjected) - corrected to \(correctedPoint) - inside court: \(isInsideCourt)")
+        return correctedPoint
     }
 
     static func isPointInTrapezoid(_ point: CGPoint, corners: [CGPoint]) -> Bool {
