@@ -30,11 +30,17 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var lastProjectedTap: CGPoint? = nil
     @Published var homographyMatrix: [NSNumber]? = nil
     @Published var projectedPlayerPosition: CGPoint? = nil
-    @Published var isTappingEnabled = false
+    @Published var isTappingEnabled = true
     
     // MARK: - Calibration Points
     @Published var calibrationPoints: [CGPoint] = []
-    @Published var isCalibrationMode = true
+    @Published var userTappedPoints: [CGPoint] = []
+    @Published var isCalibrationMode = false
+    @Published var calibrationStep = 0
+    @Published var calibrationInstructions = "Tap the top-left corner (net, left sideline)"
+    
+    // Debug flag to help troubleshoot calibration issues
+    private var debugCalibration = true
 
     // MARK: - Setup
     func startSession(in view: UIView, screenSize: CGSize) {
@@ -50,6 +56,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         session.inputs.forEach { session.removeInput($0) }
         session.outputs.forEach { session.removeOutput($0) }
 
+        initializeCalibrationPoints(for: screenSize)
+        
+        isCalibrationMode = true
+        
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ Failed to get camera device")
             return
@@ -100,9 +110,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 print("✅ Capture session started")
             }
 
-            // Initialize calibration points instead of computing homography directly
-            initializeCalibrationPoints(for: screenSize)
-            
         } catch {
             print("❌ Camera setup error: \(error.localizedDescription)")
         }
@@ -120,87 +127,77 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     }
 
     func initializeCalibrationPoints(for screenSize: CGSize) {
-        let width = screenSize.width
-        let height = screenSize.height
-
-        // 4 outer corner points
-        let bottomLeft = CGPoint(x: width * 0.2, y: height * 0.79)     // blue
-        let bottomRight = CGPoint(x: width * 0.85, y: height * 0.79)    // green
-        let topRight = CGPoint(x: width * 0.95, y: height * 0.22)       // yellow
-        let topLeft = CGPoint(x: width * 0.1, y: height * 0.2)       // pink
-
-        calibrationPoints = [bottomLeft, bottomRight, topRight, topLeft]
-
-        // Service line Y (between top and bottom)
-        let serviceLineY = topLeft.y + (bottomLeft.y - topLeft.y) * 0.5
-
-        // Interpolated X positions for service line (match trapezoid perspective)
-        let leftServiceX = bottomLeft.x + (topLeft.x - bottomLeft.x) * ((serviceLineY - bottomLeft.y) / (topLeft.y - bottomLeft.y))
-        let rightServiceX = bottomRight.x + (topRight.x - bottomRight.x) * ((serviceLineY - bottomRight.y) / (topRight.y - bottomRight.y))
-
-        // Center X for vertical service line
-        let centerX = (leftServiceX + rightServiceX) / 2
-
-        // Add inner service line points
-        calibrationPoints.append(CGPoint(x: leftServiceX, y: serviceLineY))   // orange
-        calibrationPoints.append(CGPoint(x: rightServiceX, y: serviceLineY))  // red
-        calibrationPoints.append(CGPoint(x: centerX, y: serviceLineY))        // center blue
-        calibrationPoints.append(CGPoint(x: centerX, y: serviceLineY))        // center blue (copy)
+        // Start with empty arrays - don't initialize with default points
+        calibrationPoints = []
+        userTappedPoints = []
+        calibrationStep = 0
+        updateCalibrationInstructions()
+    }
+    
+    func updateCalibrationInstructions() {
+        switch calibrationStep {
+        case 0:
+            calibrationInstructions = "Tap the top-left corner (net, left sideline)"
+        case 1:
+            calibrationInstructions = "Tap the top-right corner (net, right sideline)"
+        case 2:
+            calibrationInstructions = "Tap the bottom-left corner (baseline, left sideline)"
+        case 3:
+            calibrationInstructions = "Tap the bottom-right corner (baseline, right sideline)"
+        case 4:
+            calibrationInstructions = "Tap the center T-point (where the service line meets the center line)"
+        default:
+            calibrationInstructions = "All points captured! Tap 'Complete Calibration' to continue"
+        }
+    }
+    
+    func handleCalibrationTap(at point: CGPoint) {
+        guard isCalibrationMode else { return }
+        
+        if calibrationStep < 5 {
+            // Add the tapped point and print for debugging
+            print("👆 User tapped at point: \(point) for step \(calibrationStep)")
+            
+            // Store the user tapped point - ensure it's visible on screen
+            let screenBounds = UIScreen.main.bounds
+            let boundedPoint = CGPoint(
+                x: max(10, min(point.x, screenBounds.width - 10)),
+                y: max(10, min(point.y, screenBounds.height - 10))
+            )
+            
+            userTappedPoints.append(boundedPoint)
+            print("✅ Added point \(calibrationStep + 1): \(boundedPoint)")
+            
+            // Increment step and update instructions
+            calibrationStep += 1
+            updateCalibrationInstructions()
+            
+            // If we have all 5 points, calculate the full set of calibration points
+            if calibrationStep == 5 {
+                if let (allImagePoints, _) = CourtLayout.calculateAllReferencePoints(from: userTappedPoints) {
+                    // Store the calculated calibration points
+                    calibrationPoints = allImagePoints
+                    print("✅ Calculated all 8 calibration points from 5 user taps")
+                    
+                    // Debug print all points
+                    for (i, point) in calibrationPoints.enumerated() {
+                        print("Calibration point \(i): \(point)")
+                    }
+                    
+                    // Debug print all user tapped points
+                    for (i, point) in userTappedPoints.enumerated() {
+                        print("User tapped point \(i): \(point)")
+                    }
+                } else {
+                    print("❌ Failed to calculate calibration points")
+                }
+            }
+        }
     }
 
-
-
-
-    
-    
-//    func computeHomographyFromCalibrationPoints() {
-//        guard calibrationPoints.count >= 4 else {
-//            print("❌ Not enough calibration points ",(calibrationPoints))
-//            return
-//        }
-//        
-//        let courtPoints = CourtLayout.referenceCourtPoints
-//        
-////        guard let matrix = HomographyHelper.computeHomographyMatrix(from: calibrationPoints, to: courtPoints) else {
-////            print("❌ Homography matrix computation failed.")
-////            return
-////        }
-//        
-//        let matrix = HomographyHelper.computeHomographyMatrix(from: calibrationPoints, to: courtPoints)
-//        
-//        self.homographyMatrix = matrix
-//        
-//        // Update court lines using the new homography
-//        let courtLines: [LineSegment] = [
-//            // Baseline (y = 0)
-//            LineSegment(start: CGPoint(x: 0, y: 0), end: CGPoint(x: 8.23, y: 0)),
-//            // Right sideline
-//            LineSegment(start: CGPoint(x: 8.23, y: 0), end: CGPoint(x: 8.23, y: 11.885)),
-//            // Net line (y = 11.885)
-//            LineSegment(start: CGPoint(x: 8.23, y: 11.885), end: CGPoint(x: 0, y: 11.885)),
-//            // Left sideline
-//            LineSegment(start: CGPoint(x: 0, y: 11.885), end: CGPoint(x: 0, y: 0)),
-//        ]
-//        
-//        
-//        
-//        
-//        let transformedLines = courtLines.compactMap { line -> LineSegment? in
-//             let p1 = HomographyHelper.projectsForMap(point: line.start, using: matrix!, trapezoidCorners: Array(calibrationPoints.prefix(4)))
-//                  let p2 = HomographyHelper.projectsForMap(point: line.end, using: matrix!, trapezoidCorners: Array(calibrationPoints.prefix(4)))
-//            return LineSegment(start: p1!, end: p2!)
-//        }
-//        
-//        DispatchQueue.main.async {
-//            self.projectedCourtLines = transformedLines
-//        }
-//    }
-
-    
-
     func computeHomographyFromCalibrationPoints() {
-        guard calibrationPoints.count >= 4 else {
-            print("❌ Not enough calibration points")
+        guard calibrationPoints.count >= 8 else {
+            print("❌ Not enough calibration points, need 8, got \(calibrationPoints.count)")
             return
         }
         
@@ -211,17 +208,27 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return
         }
         self.homographyMatrix = matrix
-//        
-//        // Update court lines using the new homography
+        
+        // Update court lines using the new homography
         let courtLines: [LineSegment] = [
-            // Baseline (y = 0)
-            LineSegment(start: CGPoint(x: 0, y: 0), end: CGPoint(x: 8.23, y: 0)),
+            // Baseline (y = courtLength)
+            LineSegment(start: CGPoint(x: 0, y: CourtLayout.courtLength), 
+                        end: CGPoint(x: CourtLayout.courtWidth, y: CourtLayout.courtLength)),
             // Right sideline
-            LineSegment(start: CGPoint(x: 8.23, y: 0), end: CGPoint(x: 8.23, y: 11.885)),
-            // Net line (y = 11.885)
-            LineSegment(start: CGPoint(x: 8.23, y: 11.885), end: CGPoint(x: 0, y: 11.885)),
+            LineSegment(start: CGPoint(x: CourtLayout.courtWidth, y: 0), 
+                        end: CGPoint(x: CourtLayout.courtWidth, y: CourtLayout.courtLength)),
             // Left sideline
-            LineSegment(start: CGPoint(x: 0, y: 11.885), end: CGPoint(x: 0, y: 0)),
+            LineSegment(start: CGPoint(x: 0, y: 0), 
+                        end: CGPoint(x: 0, y: CourtLayout.courtLength)),
+            // Net line (y = 0)
+            LineSegment(start: CGPoint(x: 0, y: 0), 
+                        end: CGPoint(x: CourtLayout.courtWidth, y: 0)),
+            // Service line
+            LineSegment(start: CGPoint(x: 0, y: CourtLayout.serviceLineDistance), 
+                        end: CGPoint(x: CourtLayout.courtWidth, y: CourtLayout.serviceLineDistance)),
+            // Center line - extend it from net to baseline to ensure it passes through the center T-point
+            LineSegment(start: CGPoint(x: CourtLayout.courtWidth/2, y: 0), 
+                        end: CGPoint(x: CourtLayout.courtWidth/2, y: CourtLayout.courtLength))
         ]
         
         let transformedLines = courtLines.compactMap { line -> LineSegment? in
@@ -293,27 +300,18 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
     }
 
-    // MARK: - Tap Handling
-    func handleUserTap(_ location: CGPoint) {
-        guard let matrix = homographyMatrix else {
-            print("❌ Missing homography matrix")
-            return
-        }
+    // MARK: - User Interaction
+    func handleTap(at point: CGPoint) {
+        guard isTappingEnabled else { return }
         
-        let trapezoidCorners = calibrationPoints.prefix(4)
+        // Process the tap location
+        print("👆 User tapped at: \(point)")
         
-        guard let projected = HomographyHelper.projectsForMap(point: location, using: matrix, trapezoidCorners: Array(trapezoidCorners)) else {
-            print("❌ Tap projection failed")
-            return
-        }
-
-        if (0...8.23).contains(projected.x) && (0...11.885).contains(projected.y) {
-            DispatchQueue.main.async {
-                self.lastProjectedTap = projected
-                print("✅ Tap accepted: \(projected)")
+        // If we have a homography matrix, project the tap to court coordinates
+        if let matrix = homographyMatrix {
+            if let projected = HomographyHelper.projectsForMap(point: point, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4))) {
+                print("📍 Projected tap to court coordinates: \(projected)")
             }
-        } else {
-            print("⚠️ Tap outside bounds: \(projected)")
         }
     }
 

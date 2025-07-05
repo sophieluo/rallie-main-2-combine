@@ -21,9 +21,9 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             self.characteristicUUID = CBUUID(nsuuid: validCharUUID)
 
             centralManager = CBCentralManager(delegate: self, queue: nil)
-            print("🔵 BluetoothManager initialized with UUIDs")
+            // print("🔵 BluetoothManager initialized with UUIDs")
         } else {
-            print("⚠️ BluetoothManager not initialized — UUIDs missing or invalid")
+            // print("⚠️ BluetoothManager not initialized — UUIDs missing or invalid")
         }
     }
 
@@ -32,15 +32,15 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
 
         if central.state == .poweredOn {
             centralManager.scanForPeripherals(withServices: [serviceUUID], options: nil)
-            print("🔍 Scanning for peripherals...")
+            // print("🔍 Scanning for peripherals...")
         } else {
-            print("⚠️ Bluetooth not available: \(central.state.rawValue)")
+            // print("⚠️ Bluetooth not available: \(central.state.rawValue)")
         }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        print("🔵 Discovered peripheral: \(peripheral.name ?? "Unknown")")
+        // print("🔵 Discovered peripheral: \(peripheral.name ?? "Unknown")")
         targetPeripheral = peripheral
         centralManager.stopScan()
         centralManager.connect(peripheral, options: nil)
@@ -48,7 +48,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("✅ Connected to peripheral")
+        // print("✅ Connected to peripheral")
         guard let serviceUUID = serviceUUID else { return }
         peripheral.discoverServices([serviceUUID])
     }
@@ -65,7 +65,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         for char in characteristics {
             if char.uuid == characteristicUUID {
                 self.commandCharacteristic = char
-                print("✅ Ready to send commands")
+                // print("✅ Ready to send commands")
             }
         }
     }
@@ -74,12 +74,11 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         guard let peripheral = targetPeripheral,
               let characteristic = commandCharacteristic,
               let data = command.data(using: .utf8) else {
-            print("⚠️ Cannot send command – not connected or invalid data")
+            // print("⚠️ Cannot send command – not connected or invalid data")
             return
         }
 
         peripheral.writeValue(data, for: characteristic, type: .withResponse)
-        print("📤 Sent command: \(command)")
+        // print("📤 Sent command: \(command)")
     }
 }
-

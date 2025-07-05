@@ -65,6 +65,19 @@ class HomographyHelper {
         var correctedX = rawProjected.x
         var correctedY = rawProjected.y
         
+        // Fix Y-axis inversion by flipping the Y coordinate
+        correctedY = courtLength - correctedY
+        print("🔄 Y-axis inverted: \(rawProjected.y) → \(correctedY)")
+        
+        // Apply a systematic correction to the Y coordinate to fix the baseline projection issue
+        // This compensates for a consistent bias in the homography projection
+        // The correction is more aggressive near the baseline (where the issue is most visible)
+        let baselineBias = 1.8  // Meters to add to push points near baseline beyond it
+        let correctionFactor = min(1.0, correctedY / courtLength * 2.0)  // Increases as we approach baseline
+        let baselineCorrection = baselineBias * correctionFactor
+        correctedY = correctedY + baselineCorrection
+        print("📏 Applied baseline correction: +\(baselineCorrection) meters")
+        
         // X-coordinate correction (keep within reasonable bounds)
         if correctedX < -1.0 || correctedX > courtWidth + 1.0 {
             // Clamp to within 1 meter of court boundaries
@@ -78,19 +91,11 @@ class HomographyHelper {
             // Clamp to within 1 meter of net
             correctedY = -1.0
             print("⚠️ Y beyond net clamped: \(rawProjected.y) → \(correctedY)")
-        } else if correctedY > courtLength + 1.0 {
-            // Point is projected beyond baseline
-            
-            // For extreme values like 19.623144149780273, apply special handling
-            if correctedY > courtLength * 1.5 {
-                // For values more than 50% beyond court length, place just beyond baseline
-                correctedY = courtLength + 1.0
-                print("🚨 Extreme Y value corrected: \(rawProjected.y) → \(correctedY)")
-            } else {
-                // For less extreme values, clamp to within 1 meter of baseline
-                correctedY = courtLength + 1.0
-                print("⚠️ Y beyond baseline clamped: \(rawProjected.y) → \(correctedY)")
-            }
+        } else if correctedY > courtLength + 2.0 {
+            // Point is projected far beyond baseline
+            // Clamp to within 2 meters of baseline
+            correctedY = courtLength + 2.0
+            print("⚠️ Y far beyond baseline clamped: \(rawProjected.y) → \(correctedY)")
         }
         
         let correctedPoint = CGPoint(x: correctedX, y: correctedY)

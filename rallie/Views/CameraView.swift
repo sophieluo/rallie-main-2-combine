@@ -28,18 +28,57 @@ struct CameraView: View {
     var body: some View {
         ZStack {
             GeometryReader { geometry in
-                CameraPreviewControllerWrapper(controller: cameraController)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { value in
-                                let location = value.location
-                                if cameraController.isTappingEnabled {
-                                    cameraController.handleUserTap(location)
+                ZStack {
+                    CameraPreviewControllerWrapper(controller: cameraController)
+                    
+                    // Transparent overlay to capture taps
+                    Color.clear
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { value in
+                                    let tapPoint = value.location
+                                    
+                                    if cameraController.isCalibrationMode {
+                                        print("📍 Tap location: \(tapPoint)")
+                                        cameraController.handleCalibrationTap(at: tapPoint)
+                                    } else if cameraController.isTappingEnabled {
+                                        cameraController.handleTap(at: tapPoint)
+                                    }
                                 }
-                            }
-                    )
+                        )
+                }
             }
 
+            // Only show user tapped points, not the calculated calibration points
+            // User tapped points overlay (larger and more visible)
+            ForEach(0..<cameraController.userTappedPoints.count, id: \.self) { index in
+                let point = cameraController.userTappedPoints[index]
+                ZStack {
+                    // Outer glow for better visibility
+                    Circle()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(width: 30, height: 30)
+                    
+                    // Main colored circle
+                    Circle()
+                        .fill(getCalibrationPointColor(for: index))
+                        .frame(width: 20, height: 20)
+                    
+                    // Border
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    
+                    // Point number for clarity
+                    Text("\(index + 1)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .position(point)
+            }
+            
             // Calibration or overlay UI
             if cameraController.isCalibrationMode {
                 CalibrationPointsView(cameraController: cameraController)
@@ -52,8 +91,8 @@ struct CameraView: View {
 
             VStack {
                 Text(cameraController.isCalibrationMode ?
-                     "Drag the colored points to the 4 corners of the court" :
-                     "Align the court to fit the red outline")
+                     "Tap the 5 key points on the court to calibrate" :
+                     "Align the court to fit the red outline. Tap anywhere to start tracking.")
                     .foregroundColor(.white)
                     .padding(.top, 40)
 
@@ -105,26 +144,12 @@ struct CameraView: View {
         }
         .ignoresSafeArea(.all)
 
-        // ✅ Overlay the bottom button instead of padding
+        // Overlay the bottom button instead of padding
         .overlay(
             Group {
                 if cameraController.isCalibrationMode {
-                    VStack {
-                        Spacer()
-                        Button(action: {
-                            cameraController.computeHomographyFromCalibrationPoints()
-                            cameraController.isCalibrationMode = false
-                        }) {
-                            Text("Calibration Complete")
-                                .font(.headline)
-                                .padding()
-                                .background(Color.green.opacity(0.9))
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                                .padding(.horizontal, 20)
-                        }
-                        .padding(.bottom, 20)
-                    }
+                    // No need for duplicate UI here since CalibrationPointsView handles it
+                    EmptyView()
                 } else if !cameraController.isTappingEnabled {
                     VStack {
                         Spacer()
@@ -163,7 +188,20 @@ struct CameraView: View {
         }
     }
 
-
+    // Helper function to get different colors for calibration points
+    private func getCalibrationPointColor(for index: Int) -> Color {
+        let colors: [Color] = [
+            .blue,      // Bottom left
+            .green,     // Bottom right
+            .yellow,    // Top right
+            .pink,      // Top left
+            .orange,    // Left service
+            .red,       // Right service
+            .purple,    // Center service
+            .cyan       // Net center
+        ]
+        return colors[index % colors.count]
+    }
 
     func getCSVURL() -> URL? {
         let fileName = "player_positions.csv"

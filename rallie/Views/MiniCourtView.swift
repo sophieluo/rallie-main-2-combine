@@ -39,7 +39,7 @@ struct MiniCourtView: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 8, height: 8)
-                        .position(x: pt.x * scaleX, y: pt.y * scaleY + 0.8)
+                        .position(x: pt.x * scaleX, y: pt.y * scaleY)
                 }
 
                 // 🎾 Player position dot
@@ -47,7 +47,7 @@ struct MiniCourtView: View {
                     Circle()
                         .fill(Color.yellow)
                         .frame(width: 10, height: 10)
-                        .position(x: player.x * scaleX, y: player.y * scaleY + 0.9)
+                        .position(x: player.x * scaleX, y: player.y * scaleY)
                 }
             }
         }
@@ -57,4 +57,3 @@ struct MiniCourtView: View {
         .padding(.trailing, 10)
     }
 }
-
