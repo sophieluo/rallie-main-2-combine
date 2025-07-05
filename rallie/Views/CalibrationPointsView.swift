@@ -19,10 +19,85 @@ struct CalibrationPointsView: View {
                         path.addLine(to: p[2])  // Bottom left (baseline)
                         path.closeSubpath()
                         
-                        // Service line - horizontal line passing through T-point
+                        // ===== SERVICE LINE CALCULATION =====
                         if p.count >= 7 {
-                            path.move(to: p[4])  // Left service
-                            path.addLine(to: p[5])  // Right service
+                            // STEP 1: Calculate slopes of the upper line (net) and lower line (baseline)
+                            let upperLine = (p[0], p[1])  // (Top left, Top right)
+                            let lowerLine = (p[2], p[3])  // (Bottom left, Bottom right)
+                            
+                            // Calculate slope of upper line (s1)
+                            let s1_dx = upperLine.1.x - upperLine.0.x
+                            let s1_dy = upperLine.1.y - upperLine.0.y
+                            let s1 = s1_dy / s1_dx  // Slope of upper line (net)
+                            
+                            // Calculate slope of lower line (s2)
+                            let s2_dx = lowerLine.1.x - lowerLine.0.x
+                            let s2_dy = lowerLine.1.y - lowerLine.0.y
+                            let s2 = s2_dy / s2_dx  // Slope of lower line (baseline)
+                            
+                            // STEP 2: Calculate the weighted average slope for the service line
+                            // Using 0.55 * s1 + 0.45 * s2 as specified
+                            let serviceLineSlope = 0.55 * s1 + 0.45 * s2
+                            
+                            // STEP 3: Calculate the equation of the service line passing through T-point
+                            let tPoint = p[6]  // T-point
+                            // y - y1 = m(x - x1) => y = m(x - x1) + y1 => y = mx - mx1 + y1
+                            let serviceLineIntercept = tPoint.y - serviceLineSlope * tPoint.x
+                            // Service line equation: y = serviceLineSlope * x + serviceLineIntercept
+                            
+                            // STEP 4: Calculate the left sideline equation
+                            let leftSideline = (p[0], p[2])  // (Top left, Bottom left)
+                            let leftSidelineSlope = (leftSideline.1.y - leftSideline.0.y) / (leftSideline.1.x - leftSideline.0.x)
+                            let leftSidelineIntercept = leftSideline.0.y - leftSidelineSlope * leftSideline.0.x
+                            // Left sideline equation: y = leftSidelineSlope * x + leftSidelineIntercept
+                            
+                            // STEP 5: Calculate the right sideline equation
+                            let rightSideline = (p[1], p[3])  // (Top right, Bottom right)
+                            let rightSidelineSlope = (rightSideline.1.y - rightSideline.0.y) / (rightSideline.1.x - rightSideline.0.x)
+                            let rightSidelineIntercept = rightSideline.0.y - rightSidelineSlope * rightSideline.0.x
+                            // Right sideline equation: y = rightSidelineSlope * x + rightSidelineIntercept
+                            
+                            // STEP 6: Calculate intersection of service line with left sideline
+                            // At intersection: serviceLineSlope * x + serviceLineIntercept = leftSidelineSlope * x + leftSidelineIntercept
+                            // => (serviceLineSlope - leftSidelineSlope) * x = leftSidelineIntercept - serviceLineIntercept
+                            // => x = (leftSidelineIntercept - serviceLineIntercept) / (serviceLineSlope - leftSidelineSlope)
+                            let leftIntersectionX = (leftSidelineIntercept - serviceLineIntercept) / (serviceLineSlope - leftSidelineSlope)
+                            let leftIntersectionY = serviceLineSlope * leftIntersectionX + serviceLineIntercept
+                            let leftServicePoint = CGPoint(x: leftIntersectionX, y: leftIntersectionY)
+                            
+                            // STEP 7: Calculate intersection of service line with right sideline
+                            let rightIntersectionX = (rightSidelineIntercept - serviceLineIntercept) / (serviceLineSlope - rightSidelineSlope)
+                            let rightIntersectionY = serviceLineSlope * rightIntersectionX + serviceLineIntercept
+                            let rightServicePoint = CGPoint(x: rightIntersectionX, y: rightIntersectionY)
+                            
+                            // STEP 8: Draw the service line
+                            path.move(to: leftServicePoint)
+                            path.addLine(to: rightServicePoint)
+                            
+                            // ===== CENTER LINE CALCULATION =====
+                            // STEP 9: Calculate the average slope of the two sidelines for the center line
+                            let centerLineSlope = (leftSidelineSlope + rightSidelineSlope) / 2
+                            
+                            // STEP 10: Calculate the equation of the center line passing through T-point
+                            let centerLineIntercept = tPoint.y - centerLineSlope * tPoint.x
+                            // Center line equation: y = centerLineSlope * x + centerLineIntercept
+                            
+                            // STEP 11: Calculate intersection of center line with net (upper line)
+                            // At intersection: centerLineSlope * x + centerLineIntercept = s1 * x + upperLineIntercept
+                            let upperLineIntercept = upperLine.0.y - s1 * upperLine.0.x
+                            let netIntersectionX = (upperLineIntercept - centerLineIntercept) / (centerLineSlope - s1)
+                            let netIntersectionY = centerLineSlope * netIntersectionX + centerLineIntercept
+                            let netCenterPoint = CGPoint(x: netIntersectionX, y: netIntersectionY)
+                            
+                            // STEP 12: Calculate intersection of center line with baseline (lower line)
+                            let lowerLineIntercept = lowerLine.0.y - s2 * lowerLine.0.x
+                            let baselineIntersectionX = (lowerLineIntercept - centerLineIntercept) / (centerLineSlope - s2)
+                            let baselineIntersectionY = centerLineSlope * baselineIntersectionX + centerLineIntercept
+                            let baselineCenterPoint = CGPoint(x: baselineIntersectionX, y: baselineIntersectionY)
+                            
+                            // STEP 13: Draw the center line from net to baseline
+                            path.move(to: netCenterPoint)
+                            path.addLine(to: baselineCenterPoint)
                         }
                         
                         // Center line - vertical line from net to baseline
