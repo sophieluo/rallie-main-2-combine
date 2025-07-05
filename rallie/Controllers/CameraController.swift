@@ -213,6 +213,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
         self.homographyMatrix = matrix
         
+        // Clear previous CSV data when calibration is completed
+        deleteCSVFile()
+        
         // Update court lines using the new homography
         let courtLines: [LineSegment] = [
             // Baseline (y = courtLength)
@@ -431,6 +434,25 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
             .first?
             .appendingPathComponent("player_positions.csv")
+    }
+    
+    // Add method to delete the CSV file
+    func deleteCSVFile() {
+        guard let fileURL = getCSVFileURL() else {
+            print("❌ Could not get CSV file URL")
+            return
+        }
+        
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+                print("🗑️ Deleted existing CSV file to start fresh")
+            } else {
+                print("ℹ️ No existing CSV file to delete")
+            }
+        } catch {
+            print("❌ Error deleting CSV file: \(error.localizedDescription)")
+        }
     }
 
     let playerPositionPublisher = PassthroughSubject<CGPoint, Never>()
