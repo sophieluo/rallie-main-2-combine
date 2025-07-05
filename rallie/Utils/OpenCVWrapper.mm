@@ -35,6 +35,7 @@ using namespace cv;
         dst.push_back(cv::Point2f(dp.x, dp.y));
     }
 
+    // Calculate homography from image to court coordinates
     cv::Mat H = cv::findHomography(src, dst, cv::RANSAC);
     if (H.empty()) return nil;
 
