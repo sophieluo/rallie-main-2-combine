@@ -105,16 +105,25 @@ class HomographyHelper {
     }
 
     static func isPointInTrapezoid(_ point: CGPoint, corners: [CGPoint]) -> Bool {
-        // Create a path from the corners
+        // Create a path with corners in the correct order to form a proper polygon
         let path = UIBezierPath()
+        
+        // Start with top-left
         path.move(to: corners[0])
-        for i in 1...3 {
-            path.addLine(to: corners[i])
-        }
+        
+        // Go to top-right
+        path.addLine(to: corners[1])
+        
+        // Go to bottom-right (not bottom-left as in the original code)
+        path.addLine(to: corners[3])
+        
+        // Go to bottom-left
+        path.addLine(to: corners[2])
+        
         path.close()
         
-        // Add more tolerance for edge taps
-        let tolerance: CGFloat = 20.0  // Increased from 5.0 to be more lenient
+        // Add tolerance for edge taps
+        let tolerance: CGFloat = 20.0
         let expandedPath = UIBezierPath(cgPath: path.cgPath)
         expandedPath.lineWidth = tolerance * 2
         
