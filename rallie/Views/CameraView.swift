@@ -167,7 +167,13 @@ struct CameraView: View {
             },
             alignment: .bottom
         )
-
+        // Add alert for recalibration prompt
+        .alert(cameraController.recalibrationMessage, isPresented: $cameraController.showRecalibrationPrompt) {
+            Button("Calibrate Now") {
+                cameraController.isCalibrationMode = true
+                cameraController.resetCalibration()
+            }
+        }
         .sheet(isPresented: $showShareSheet) {
             if let file = csvURL {
                 ShareSheet(activityItems: [file])

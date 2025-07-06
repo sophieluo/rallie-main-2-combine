@@ -45,6 +45,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     // Debug flag to help troubleshoot calibration issues
     private var debugCalibration = true
 
+    // MARK: - Recalibration Prompt
+    @Published var showRecalibrationPrompt = false
+    @Published var recalibrationMessage = "Calibration data not found. Please calibrate the court."
+
     // MARK: - Setup
     func startSession(in view: UIView, screenSize: CGSize) {
         print("🎥 Starting camera session setup")
@@ -59,9 +63,17 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         session.inputs.forEach { session.removeInput($0) }
         session.outputs.forEach { session.removeOutput($0) }
 
-        initializeCalibrationPoints(for: screenSize)
-        
-        isCalibrationMode = true
+        // Check if calibration data is available
+        if calibrationPoints.count < 8 {
+            print("⚠️ Calibration data not available")
+            initializeCalibrationPoints(for: screenSize)
+            isCalibrationMode = true
+            showRecalibrationPrompt = true
+        } else {
+            print("✅ Using existing calibration data")
+            isCalibrationMode = false
+            showRecalibrationPrompt = false
+        }
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ Failed to get camera device")
@@ -151,6 +163,22 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             calibrationInstructions = "Tap the center T-point (where the service line meets the center line)"
         default:
             calibrationInstructions = "All points captured! Tap 'Complete Calibration' to continue"
+        }
+    }
+    
+    func resetCalibration() {
+        print("🔄 Resetting calibration")
+        calibrationStep = 0
+        userTappedPoints.removeAll()
+        calibrationPoints.removeAll()
+        homographyMatrix = nil
+        calibrationInstructions = "Tap the top-left corner (net, left sideline)"
+        isCalibrationMode = true
+        showRecalibrationPrompt = false
+        
+        // Re-initialize calibration points for the current screen size
+        if let screenSize = previewLayer?.bounds.size {
+            initializeCalibrationPoints(for: screenSize)
         }
     }
     
