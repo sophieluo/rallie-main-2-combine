@@ -28,7 +28,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
 
     // MARK: - Outputs
     @Published var projectedCourtLines: [LineSegment] = []
-    @Published var lastProjectedTap: CGPoint? = nil
     @Published var homographyMatrix: [NSNumber]? = nil
     @Published var projectedPlayerPosition: CGPoint? = nil
     @Published var isTappingEnabled = true
@@ -299,21 +298,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 self.updatePlayerPosition(projected)
                 self.logPlayerPositionCSV(projected)
                 print("👟 Detected player position")
-            }
-        }
-    }
-
-    // MARK: - User Interaction
-    func handleTap(at point: CGPoint) {
-        guard isTappingEnabled else { return }
-        
-        // Process the tap location
-        print("👆 User tapped at: \(point)")
-        
-        // If we have a homography matrix, project the tap to court coordinates
-        if let matrix = homographyMatrix {
-            if let projected = HomographyHelper.projectsForMap(point: point, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4))) {
-                print("📍 Projected tap to court coordinates: \(projected)")
             }
         }
     }

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MiniCourtView: View {
-    let tappedPoint: CGPoint?           // 🟢 From user tap
     let playerPosition: CGPoint?        // 🎾 From Vision
 
     let courtWidth: CGFloat = 8.23      // Court width in meters
@@ -33,14 +32,6 @@ struct MiniCourtView: View {
                     path.addLine(to: CGPoint(x: centerX, y: serviceLineY * scaleY))  // End at service line
                 }
                 .stroke(Color.white.opacity(0.9), lineWidth: 1)
-
-                // 🟢 Tapped dot
-                if let pt = tappedPoint {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 8, height: 8)
-                        .position(x: pt.x * scaleX, y: pt.y * scaleY)
-                }
 
                 // 🎾 Player position dot
                 if let player = playerPosition {

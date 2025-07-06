@@ -43,8 +43,6 @@ struct CameraView: View {
                                     if cameraController.isCalibrationMode {
                                         print("📍 Tap location: \(tapPoint)")
                                         cameraController.handleCalibrationTap(at: tapPoint)
-                                    } else if cameraController.isTappingEnabled {
-                                        cameraController.handleTap(at: tapPoint)
                                     }
                                 }
                         )
@@ -100,7 +98,6 @@ struct CameraView: View {
                     Spacer()
                     VStack(alignment: .trailing, spacing: 10) {
                         MiniCourtView(
-                            tappedPoint: cameraController.lastProjectedTap,
                             playerPosition: cameraController.projectedPlayerPosition
                         )
                         .frame(width: 140, height: 100)
