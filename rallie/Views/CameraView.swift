@@ -1,28 +1,15 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import AVFoundation
+import Vision
 
-@available(iOS 16.0, *)
 struct CameraView: View {
     @ObservedObject var cameraController: CameraController
+    @ObservedObject var bluetoothManager = BluetoothManager.shared
+    @ObservedObject var logicManager = LogicManager.shared
     @Environment(\.dismiss) private var dismiss
-
-    //share csv
-    @State private var showShareSheet = false
-    @State private var csvURL: URL? = nil
-    @State private var showExportAlert = false
-
-    //broadcast player position
-    @StateObject var bluetoothManager = BluetoothManager()
-    @StateObject var logicManager: LogicManager
-
+    
     init(cameraController: CameraController) {
         _cameraController = ObservedObject(wrappedValue: cameraController)
-        let bluetooth = BluetoothManager()
-        _bluetoothManager = StateObject(wrappedValue: bluetooth)
-        _logicManager = StateObject(wrappedValue: LogicManager(
-            playerPositionPublisher: cameraController.$projectedPlayerPosition,
-            bluetoothManager: bluetooth
-        ))
     }
 
     var body: some View {
@@ -64,66 +51,36 @@ struct CameraView: View {
                         .fill(getCalibrationPointColor(for: index))
                         .frame(width: 20, height: 20)
                     
-                    // Border
-                    Circle()
-                        .stroke(Color.white, lineWidth: 2)
-                        .frame(width: 20, height: 20)
-                    
-                    // Point number for clarity
+                    // Label for the point
                     Text("\(index + 1)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.caption)
                         .foregroundColor(.white)
                 }
-                .position(point)
+                .position(x: point.x, y: point.y)
             }
+            
+            // Court lines overlay
+            Path { path in
+                for line in cameraController.projectedCourtLines {
+                    path.move(to: line.start)
+                    path.addLine(to: line.end)
+                }
+            }
+            .stroke(Color.green, lineWidth: 2)
             
             // Calibration or overlay UI
             if cameraController.isCalibrationMode {
                 CalibrationPointsView(cameraController: cameraController)
             } else {
                 OverlayShapeView(
-                    isActivated: cameraController.isTappingEnabled,
-                    cameraController: cameraController
+                    isActivated: true, cameraController: cameraController
                 )
             }
-
+            
+            // Top UI elements
             VStack {
-                Text(cameraController.isCalibrationMode ?
-                     "Tap the 5 key points on the court to calibrate" :
-                     "Align the court to fit the red outline. Tap anywhere to start tracking.")
-                    .foregroundColor(.white)
-                    .padding(.top, 40)
-
                 HStack {
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 10) {
-                        MiniCourtView(
-                            playerPosition: cameraController.projectedPlayerPosition
-                        )
-                        .frame(width: 140, height: 100)
-
-                        Button {
-                            if let fileURL = getCSVURL() {
-                                self.csvURL = fileURL
-                                self.showShareSheet = true
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "square.and.arrow.up")
-                                Text("Export CSV")
-                            }
-                            .foregroundColor(.white)
-                            .underline()
-                        }
-                    }
-                    .padding(.top, 20)
-                    .padding(.trailing, 20)
-                }
-
-                Spacer()
-
-                // Top-left close button
-                HStack {
+                    // Top-left close button
                     Button(action: {
                         cameraController.stopSession()
                         dismiss()
@@ -133,53 +90,44 @@ struct CameraView: View {
                             .foregroundColor(.white)
                             .padding()
                     }
+                    
                     Spacer()
+                    
+                    // Mini court view in top-right
+                    if !cameraController.isCalibrationMode {
+                        MiniCourtView(playerPosition: cameraController.projectedPlayerPosition)
+                            .frame(width: 140, height: 100)
+                            .padding(.trailing, 10)
+                    }
+                }
+                .padding(.top, 10)
+                
+                // Only show calibration instructions when in calibration mode
+                if cameraController.isCalibrationMode {
+                    Text("Tap the 5 key points on the court to calibrate")
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(8)
+                        .padding(.top, 10)
                 }
 
                 Spacer()
             }
         }
         .ignoresSafeArea(.all)
-
-        // Overlay the bottom button instead of padding
-        .overlay(
-            Group {
-                if cameraController.isCalibrationMode {
-                    // No need for duplicate UI here since CalibrationPointsView handles it
-                    EmptyView()
-                } else if !cameraController.isTappingEnabled {
-                    VStack {
-                        Spacer()
-                        Button(action: {
-                            cameraController.isTappingEnabled = true
-                        }) {
-                            Text("Aligned - Let's go!")
-                                .font(.headline)
-                                .padding()
-                                .background(Color.blue.opacity(0.9))
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                                .padding(.horizontal, 20)
-                        }
-                        .padding(.bottom, 20)
-                    }
-                }
-            },
-            alignment: .bottom
-        )
-        // Add alert for recalibration prompt
-        .alert(cameraController.recalibrationMessage, isPresented: $cameraController.showRecalibrationPrompt) {
-            Button("Calibrate Now") {
+        .alert("Would you like to recalibrate the court?", isPresented: $cameraController.showRecalibrationPrompt) {
+            Button("Yes, recalibrate") {
                 cameraController.isCalibrationMode = true
                 cameraController.resetCalibration()
             }
-        }
-        .sheet(isPresented: $showShareSheet) {
-            if let file = csvURL {
-                ShareSheet(activityItems: [file])
+            Button("No, continue with existing calibration", role: .cancel) {
+                cameraController.showRecalibrationPrompt = false
             }
         }
         .onAppear {
+            // Start camera session when view appears
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let window = windowScene.windows.first {
                 let screenSize = window.bounds.size
@@ -187,51 +135,13 @@ struct CameraView: View {
             }
         }
         .onDisappear {
+            // Stop camera session when view disappears
             cameraController.stopSession()
         }
     }
-
-    // Helper function to get different colors for calibration points
+    
     private func getCalibrationPointColor(for index: Int) -> Color {
-        let colors: [Color] = [
-            .blue,      // Bottom left
-            .green,     // Bottom right
-            .yellow,    // Top right
-            .pink,      // Top left
-            .orange,    // Left service
-            .red,       // Right service
-            .purple,    // Center service
-            .cyan       // Net center
-        ]
+        let colors: [Color] = [.red, .blue, .green, .orange]
         return colors[index % colors.count]
     }
-
-    func getCSVURL() -> URL? {
-        let fileName = "player_positions.csv"
-        if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let fileURL = dir.appendingPathComponent(fileName)
-            return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
-        }
-        return nil
-    }
-
-    private func checkCSVContents() -> Bool {
-        guard let fileURL = getCSVURL(),
-              let contents = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            return false
-        }
-        return !contents.isEmpty
-    }
-}
-
-// MARK: - ShareSheet Helper
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

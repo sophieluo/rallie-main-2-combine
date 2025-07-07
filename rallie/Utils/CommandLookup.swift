@@ -18,7 +18,7 @@ enum SpinType: Int, CaseIterable {
 
 struct CommandLookup {
     // Fallback command if no zone match is found (as byte array)
-    static let fallbackCommand: [UInt8] = [0x5A, 0xA5, 0x83, 50, 50, 45, 45, 50, 0, 0]
+    static let fallbackCommand: [UInt8] = createCommand(upperWheel: 50, lowerWheel: 50, pitch: 50, yaw: 50, feedSpeed: 50, startBall: true)
     
     // Speed range: 20-80mph with 10mph intervals (7 different speeds)
     static let minSpeed = 20
@@ -40,7 +40,7 @@ struct CommandLookup {
         // Fill the table with commands for each combination
         // In a real implementation, these would be calibrated values from testing
         for zoneID in 0..<16 {
-            for spinType in 0..<SpinType.allCases.count {
+            for spinType in SpinType.allCases {
                 for speedLevel in 0..<speedLevels {
                     // For demonstration purposes, we'll generate parameters systematically
                     // In production, these would be pre-calibrated values
@@ -59,7 +59,7 @@ struct CommandLookup {
                     let pitchAngle = 30 + (speedLevel * 5)
                     
                     // Yaw angle varies by spin type
-                    let yawAngle = 45 + (spinType * 15)
+                    let yawAngle = 45 + (spinType.rawValue * 15)
                     
                     // Ball feed speed is constant for now
                     let feedSpeed = 50
@@ -72,7 +72,7 @@ struct CommandLookup {
                     params.yawAngle = UInt8(yawAngle)
                     params.feedSpeed = UInt8(feedSpeed)
                     
-                    table[zoneID][spinType][speedLevel] = params
+                    table[zoneID][spinType.rawValue][speedLevel] = params
                 }
             }
         }
@@ -191,5 +191,30 @@ struct CommandLookup {
         let zoneID = row * 4 + col
         print("📍 Point \(point) mapped to custom zone \(zoneID) (col: \(col), row: \(row))")
         return zoneID
+    }
+    
+    static func createCommand(upperWheel: Int, lowerWheel: Int, pitch: Int, yaw: Int, feedSpeed: Int, startBall: Bool) -> [UInt8] {
+        // Protocol: [0x5A, 0xA5, 0x83, upperWheel, lowerWheel, pitch, yaw, feedSpeed, controlBit, crc]
+        var bytes: [UInt8] = [
+            0x5A,               // Header 1
+            0xA5,               // Header 2
+            0x83,               // Source
+            UInt8(upperWheel),    // Upper wheel speed (0-100%)
+            UInt8(lowerWheel),    // Lower wheel speed (0-100%)
+            UInt8(pitch),         // Pitch angle (0-90)
+            UInt8(yaw),           // Yaw angle (0-90)
+            UInt8(feedSpeed),     // Feed speed (0-100%)
+            startBall ? 1 : 0,  // Control bit: 0=stop, 1=start
+            0                   // CRC (calculated below)
+        ]
+        
+        // Calculate CRC (simple XOR of all previous bytes for demonstration)
+        var crc: UInt8 = 0
+        for i in 0..<(bytes.count - 1) {
+            crc ^= bytes[i]
+        }
+        bytes[bytes.count - 1] = crc
+        
+        return bytes
     }
 }

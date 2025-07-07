@@ -8,6 +8,9 @@ import Combine
 import SwiftUI
 
 class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    // Singleton instance for shared access
+    static let shared = CameraController()
+    
     private let session = AVCaptureSession()
     public var previewLayer: AVCaptureVideoPreviewLayer?
     private var output: AVCaptureVideoDataOutput?
@@ -45,9 +48,12 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     // Debug flag to help troubleshoot calibration issues
     private var debugCalibration = true
 
-    // MARK: - Recalibration Prompt
+    // Track if calibration has been performed before
+    @Published var hasCalibrationBeenPerformedBefore = false
     @Published var showRecalibrationPrompt = false
-    @Published var recalibrationMessage = "Calibration data not found. Please calibrate the court."
+    
+    // UserDefaults key for tracking if calibration has been done before
+    internal let hasCalibrationBeenPerformedKey = "hasCalibrationBeenPerformedBefore"
 
     // MARK: - Setup
     func startSession(in view: UIView, screenSize: CGSize) {
@@ -68,11 +74,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             print("⚠️ Calibration data not available")
             initializeCalibrationPoints(for: screenSize)
             isCalibrationMode = true
-            showRecalibrationPrompt = true
         } else {
             print("✅ Using existing calibration data")
             isCalibrationMode = false
-            showRecalibrationPrompt = false
         }
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
@@ -128,6 +132,12 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         } catch {
             print("❌ Camera setup error: \(error.localizedDescription)")
         }
+        
+        // Check if calibration has been performed before
+        if UserDefaults.standard.bool(forKey: hasCalibrationBeenPerformedKey) {
+            hasCalibrationBeenPerformedBefore = true
+            showRecalibrationPrompt = true
+        }
     }
 
     func stopSession() {
@@ -174,7 +184,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         homographyMatrix = nil
         calibrationInstructions = "Tap the top-left corner (net, left sideline)"
         isCalibrationMode = true
-        showRecalibrationPrompt = false
         
         // Re-initialize calibration points for the current screen size
         if let screenSize = previewLayer?.bounds.size {
@@ -239,9 +248,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return
         }
         self.homographyMatrix = matrix
-        
-        // Clear previous CSV data when calibration is completed
-        deleteCSVFile()
         
         // Update court lines using the new homography
         let courtLines: [LineSegment] = [
@@ -324,7 +330,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             
             if let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners)) {
                 self.updatePlayerPosition(projected)
-                self.logPlayerPositionCSV(projected)
                 print("👟 Detected player position")
             }
         }
@@ -391,79 +396,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             if distance > 0.1 { // Only log if difference is significant
                 print("🧮 Kalman smoothing: diff=\(String(format: "%.2f", distance))m")
             }
-        }
-    }
-
-    private func logPlayerPositionCSV(_ point: CGPoint) {
-        let now = Date()
-
-        // Only log if at least 1 second has passed
-        if let last = lastLogTime, now.timeIntervalSince(last) < 1.0 {
-            return
-        }
-
-        lastLogTime = now
-
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        let timestamp = dateFormatter.string(from: now)
-
-        let row = "\(timestamp),\(point.x),\(point.y)\n"
-        let fileName = "player_positions.csv"
-
-        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            print("❌ Failed to get document directory")
-            return
-        }
-
-        let fileURL = dir.appendingPathComponent(fileName)
-        print("📝 CSV Path: \(fileURL.path)")
-
-        do {
-            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                // Create new file with header
-                let header = "timestamp,x,y\n"
-                try (header + row).write(to: fileURL, atomically: true, encoding: .utf8)
-                print("✅ Created new CSV file with header")
-            } else {
-                // Append to existing file
-                let handle = try FileHandle(forWritingTo: fileURL)
-                defer { handle.closeFile() } // Ensures file is closed even if an error occurs
-                
-                handle.seekToEndOfFile()
-                if let data = row.data(using: .utf8) {
-                    handle.write(data)
-                    print("✅ Appended position: \(point.x), \(point.y)")
-                }
-            }
-        } catch {
-            print("❌ CSV write error: \(error.localizedDescription)")
-        }
-    }
-
-    // Add this helper method to get the CSV file URL
-    func getCSVFileURL() -> URL? {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("player_positions.csv")
-    }
-    
-    // Add method to delete the CSV file
-    func deleteCSVFile() {
-        guard let fileURL = getCSVFileURL() else {
-            print("❌ Could not get CSV file URL")
-            return
-        }
-        
-        do {
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                try FileManager.default.removeItem(at: fileURL)
-                print("🗑️ Deleted existing CSV file to start fresh")
-            } else {
-                print("ℹ️ No existing CSV file to delete")
-            }
-        } catch {
-            print("❌ Error deleting CSV file: \(error.localizedDescription)")
         }
     }
 

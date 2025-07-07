@@ -7,27 +7,20 @@ enum ControlMode {
     case interactive  // Real-time player position tracking
 }
 
-enum SpinType {
-    case flat
-    case topSpin
-    case backSpin
-    case sideSpin
-    
-    var description: String {
-        switch self {
-        case .flat:
-            return "Flat"
-        case .topSpin:
-            return "Top Spin"
-        case .backSpin:
-            return "Back Spin"
-        case .sideSpin:
-            return "Side Spin"
-        }
-    }
-}
-
 class LogicManager: ObservableObject {
+    // Singleton instance for shared access
+    private static var _shared: LogicManager?
+    
+    static var shared: LogicManager {
+        if _shared == nil {
+            _shared = LogicManager(
+                playerPositionPublisher: CameraController.shared.$projectedPlayerPosition.eraseToAnyPublisher(),
+                bluetoothManager: BluetoothManager.shared
+            )
+        }
+        return _shared!
+    }
+    
     private var cancellables = Set<AnyCancellable>()
     private let bluetoothManager: BluetoothManager
     
@@ -37,15 +30,29 @@ class LogicManager: ObservableObject {
     @Published var ballSpeed: Int = 50 // Default 50mph (range: 20-80mph)
     @Published var spinType: SpinType = .flat // Default flat spin
     @Published var ballActive: Bool = false // Whether the ball machine is active
+    @Published var launchInterval: TimeInterval = 3.0 // Default 3s (range: 2-9s)
+    
+    // Track the last command zone for display
+    @Published var lastCommandZone: Int? = nil
+    
+    // Constants for launch interval
+    static let minLaunchInterval: TimeInterval = 2.0
+    static let maxLaunchInterval: TimeInterval = 9.0
     
     // Store recent player positions with timestamps
     private var timedPositionBuffer: [(point: CGPoint, timestamp: Date)] = []
     
-    // Ensure we send a command only every `commandInterval` seconds
+    // Ensure we send a command only every `launchInterval` seconds
     private var lastCommandSent: Date = .distantPast
-    private var commandInterval: TimeInterval = 3.0
     
-    init(playerPositionPublisher: Published<CGPoint?>.Publisher, bluetoothManager: BluetoothManager) {
+    // Time window for position averaging (shorter for more responsive tracking)
+    private var positionAveragingWindow: TimeInterval {
+        // Use a smaller window for shorter intervals to be more responsive
+        // and a larger window for longer intervals for more stability
+        return min(launchInterval * 0.3, 1.0)
+    }
+    
+    init(playerPositionPublisher: AnyPublisher<CGPoint?, Never>, bluetoothManager: BluetoothManager) {
         self.bluetoothManager = bluetoothManager
         
         // Subscribe to player position updates from CameraController
@@ -69,6 +76,9 @@ class LogicManager: ObservableObject {
     func sendCommandForTargetPoint(_ point: CGPoint) {
         guard controlMode == .manual else { return }
         
+        // Update last command zone for display
+        lastCommandZone = CommandLookup.zoneID(for: point)
+        
         let commandBytes = CommandLookup.command(for: point, speed: ballSpeed, spin: spinType, startBall: ballActive)
         bluetoothManager.sendCommand(commandBytes)
         print("📤 Manual mode: Sent command for point \(point)")
@@ -89,6 +99,13 @@ class LogicManager: ObservableObject {
     func setSpinType(_ spin: SpinType) {
         spinType = spin
         print("🔄 Spin type set to \(spin.description)")
+    }
+    
+    /// Set launch interval (2-9 seconds)
+    func setLaunchInterval(_ interval: TimeInterval) {
+        let clampedInterval = min(max(interval, LogicManager.minLaunchInterval), LogicManager.maxLaunchInterval)
+        launchInterval = clampedInterval
+        print("⏱️ Launch interval set to \(String(format: "%.1f", launchInterval))s")
     }
     
     /// Toggle ball machine active state
@@ -115,30 +132,24 @@ class LogicManager: ObservableObject {
         
         // Clear position buffer when switching modes
         timedPositionBuffer.removeAll()
-        
-        // Adjust command interval based on mode
-        commandInterval = (controlMode == .interactive) ? 2.0 : 3.0
     }
     
     private func attemptToSendSmoothedCommand() {
         let now = Date()
         
         // Respect interval between commands
-        guard now.timeIntervalSince(lastCommandSent) >= commandInterval else { return }
+        guard now.timeIntervalSince(lastCommandSent) >= launchInterval else { return }
         
         // Keep only data from the last 3 seconds
         timedPositionBuffer = timedPositionBuffer.filter { now.timeIntervalSince($0.timestamp) <= 3.0 }
         
-        // For interactive mode, we use a shorter window to be more responsive
-        let timeWindow: TimeInterval = (controlMode == .interactive) ? 0.7 : 1.0
-        
         // Extract only positions from the recent window for averaging
         let recent = timedPositionBuffer
-            .filter { now.timeIntervalSince($0.timestamp) <= timeWindow }
+            .filter { now.timeIntervalSince($0.timestamp) <= positionAveragingWindow }
             .map { $0.point }
         
         guard !recent.isEmpty else {
-            print("⚠️ No recent positions in last \(timeWindow)s to average")
+            print("⚠️ No recent positions in last \(String(format: "%.1f", positionAveragingWindow))s to average")
             return
         }
         
@@ -150,12 +161,15 @@ class LogicManager: ObservableObject {
         // Get zone ID for logging purposes
         let zoneID = CommandLookup.zoneID(for: avgPoint)
         
+        // Update last command zone for display
+        lastCommandZone = zoneID
+        
         // Get command with current ball speed and spin settings
         let commandBytes = CommandLookup.command(for: avgPoint, speed: ballSpeed, spin: spinType, startBall: ballActive)
         
         if let zoneID = zoneID {
             print("📍 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged player position: \(avgPoint), mapped to zone \(zoneID)")
-            print("🏓 Using ball speed: \(ballSpeed)mph, spin: \(spinType.description)")
+            print("🏓 Using ball speed: \(ballSpeed)mph, spin: \(spinType.description), interval: \(String(format: "%.1f", launchInterval))s")
         } else {
             print("❓ \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged point \(avgPoint) is outside zone grid — using fallback")
         }

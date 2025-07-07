@@ -1,6 +1,9 @@
 import CoreBluetooth
 
 class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    // Singleton instance for shared access
+    static let shared = BluetoothManager()
+    
     private var centralManager: CBCentralManager!
     private var targetPeripheral: CBPeripheral?
     private var commandCharacteristic: CBCharacteristic?

@@ -74,6 +74,10 @@ struct CalibrationPointsView: View {
                         Button(action: {
                             cameraController.computeHomographyFromCalibrationPoints()
                             cameraController.isCalibrationMode = false
+                            
+                            // Save that calibration has been performed
+                            UserDefaults.standard.set(true, forKey: cameraController.hasCalibrationBeenPerformedKey)
+                            cameraController.hasCalibrationBeenPerformedBefore = true
                         }) {
                             Text("Complete Calibration")
                                 .font(.headline)
