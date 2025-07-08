@@ -6,6 +6,7 @@ import UIKit
 import Vision
 import Combine
 import SwiftUI
+import CoreGraphics
 
 class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     // Singleton instance for shared access
@@ -15,6 +16,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     public var previewLayer: AVCaptureVideoPreviewLayer?
     private var output: AVCaptureVideoDataOutput?
     private var lastLogTime: Date? = nil
+    
+    // For limiting log frequency
+    private var lastHomographyWarningTime: Date? = nil
+    private var lastFootPositionWarningTime: Date? = nil
 
     // MARK: - Vision
     private(set) var overlayView = BoundingBoxOverlayView()
@@ -33,6 +38,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var projectedCourtLines: [LineSegment] = []
     @Published var homographyMatrix: [NSNumber]? = nil
     @Published var projectedPlayerPosition: CGPoint? = nil
+    @Published var playerSpeed: Double = 0.0
     @Published var isTappingEnabled = true
     
     // Kalman filter for smoothing player position
@@ -294,45 +300,66 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
 
     // MARK: - Frame Processing
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            print("❌ Failed to get pixel buffer")
-            return
-        }
-        
-        if !session.isRunning {
+        // Check if session is running
+        guard session.isRunning else {
             print("⚠️ Session not running during frame processing")
             return
         }
         
-        objectDetector.detectObjects(in: pixelBuffer) { [weak self] detected in
-                   guard let self = self else { return }
-             self.detectedObjects = detected
-              
+        // Extract pixel buffer from sample buffer
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            print("❌ Failed to get pixel buffer from sample buffer")
+            return
         }
         
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self,
-                  let matrix = self.homographyMatrix else {
-                print("❌ Missing homography matrix")
-                return
+        // Process object detection on a background queue
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Detect objects in the pixel buffer
+            self.objectDetector.detectObjects(in: pixelBuffer) { detected in
+                // Update detected objects
+                self.detectedObjects = detected
             }
             
-            let trapezoidCorners = self.calibrationPoints.prefix(4)
-            
-            guard let footPos = self.objectDetector.bottomcentrePointPositionInImage else {
-                // Only print every few seconds to avoid log spam
-                if let last = self.lastLogTime, Date().timeIntervalSince(last) > 2.0 {
-                    print("ℹ️ No foot position detected")
-                    self.lastLogTime = Date()
-                }
-                return
-            }
-            
-            if let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners)) {
-                self.updatePlayerPosition(projected)
-                print("👟 Detected player position")
+            // Process player position on main queue
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.processPlayerPosition()
             }
         }
+    }
+    
+    // Process player position on the main thread
+    private func processPlayerPosition() {
+        // Check if we have a homography matrix
+        guard let matrix = homographyMatrix else {
+            // Only print warning every few seconds to avoid log spam
+            if let lastWarning = lastHomographyWarningTime, Date().timeIntervalSince(lastWarning) < 2.0 {
+                return
+            }
+            lastHomographyWarningTime = Date()
+            print("❌ Missing homography matrix")
+            return
+        }
+        
+        let trapezoidCorners = calibrationPoints.prefix(4)
+        
+        // Check if we have a foot position
+        guard let footPos = objectDetector.bottomCenterPointPositionInImage,
+              let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners)) else {
+            // Only print every few seconds to avoid log spam
+            if let last = lastFootPositionWarningTime, Date().timeIntervalSince(last) < 2.0 {
+                return
+            }
+            lastFootPositionWarningTime = Date()
+            print("ℹ️ No foot position detected")
+            return
+        }
+        
+        // Update player position
+        updatePlayerPosition(projected)
+        print("👟 Detected player position")
     }
 
     func updatePreviewFrame(to bounds: CGRect) {
@@ -385,6 +412,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     let velocity = filter.currentVelocity
                     let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
                     let formattedSpeed = String(format: "%.2f", speed)
+                    self.playerSpeed = speed
                     print("🏃 Player speed: \(formattedSpeed) m/s")
                 }
             }

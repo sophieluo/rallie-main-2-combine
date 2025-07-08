@@ -4,7 +4,6 @@
 //
 //
 
-
 import Foundation
 import Vision
 import CoreML
@@ -13,9 +12,9 @@ import SwiftUI
 class ObjectDetector: ObservableObject {
     private let visionModel: VNCoreMLModel
 
-    @Published var centrePointPositionInImage: CGPoint? = nil
-    @Published var bottomcentrePointPositionInImage: CGPoint? = nil
-    @Published var centrePointInPixels: CGPoint? = nil
+    @Published var centerPointPositionInImage: CGPoint? = nil
+    @Published var bottomCenterPointPositionInImage: CGPoint? = nil
+    @Published var centerPointInPixels: CGPoint? = nil
     @Published var bottomLeftPixel: CGPoint? = nil
 
     init() {
@@ -52,7 +51,7 @@ class ObjectDetector: ObservableObject {
 
                 var boxRect = CGRect(x: x, y: y, width: width, height: height)
 
-                // ✅ Expand box height downward to better include feet
+                // Expand box height downward to better include feet
                 let expandFactor: CGFloat = 1.2
                 let newHeight = boxRect.height * expandFactor
                 let heightIncrease = newHeight - boxRect.height
@@ -70,9 +69,9 @@ class ObjectDetector: ObservableObject {
                 let bottomLeft = CGPoint(x: boxRect.minX, y: boxRect.maxY)
                 let bottomCenter = CGPoint(x: boxRect.midX, y: boxRect.maxY)
 
-                self.bottomcentrePointPositionInImage = bottomCenter
-                self.centrePointPositionInImage = CGPoint(x: boundingBox.midX, y: boundingBox.midY)
-                self.centrePointInPixels = pixelCenter
+                self.bottomCenterPointPositionInImage = bottomCenter
+                self.centerPointPositionInImage = CGPoint(x: boundingBox.midX, y: boundingBox.midY)
+                self.centerPointInPixels = pixelCenter
                 self.bottomLeftPixel = bottomLeft
 
                 return DetectedObject(

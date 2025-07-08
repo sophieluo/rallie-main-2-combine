@@ -4,17 +4,21 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var logicManager: LogicManager = .shared
     @ObservedObject var cameraController: CameraController = .shared
+    @ObservedObject var bluetoothManager: BluetoothManager = .shared
     @State private var showCamera = false
     
     // Ball speed settings
     private let speedOptions = [20, 30, 40, 50, 60, 70, 80]
     
-    // Spin type settingsx
+    // Spin type settings
     private let spinOptions: [SpinType] = [.flat, .topspin, .extremeTopspin]
     private let spinLabels = ["Flat", "Topspin", "Extreme Topspin"]
     
     // Launch interval settings
     @State private var launchInterval: Double = 3.0
+    
+    // Debug settings
+    @State private var showDebugSection = false
     
     // Initialize with current values from LogicManager
     init() {
@@ -58,6 +62,41 @@ struct SettingsView: View {
                             Spacer()
                             Text("9s")
                         }
+                    }
+                }
+                
+                // Simple Bluetooth Debug Section
+                Section(header: Text("Bluetooth Debug")) {
+                    Toggle("Show Debug Controls", isOn: $showDebugSection)
+                    
+                    if showDebugSection {
+                        VStack(alignment: .leading, spacing: 10) {
+                            // Connection status with color indicator
+                            HStack {
+                                Text("Connection Status:")
+                                Spacer()
+                                Text(bluetoothManager.isConnected ? "Connected" : "Disconnected")
+                                    .foregroundColor(bluetoothManager.isConnected ? .green : .red)
+                                    .fontWeight(.bold)
+                            }
+                            
+                            // Basic debug buttons
+                            Button("Print Connection Status") {
+                                bluetoothManager.printConnectionStatus()
+                            }
+                            .foregroundColor(.blue)
+                            
+                            Button("Send Test Command (Center Court)") {
+                                bluetoothManager.sendTestCommand()
+                            }
+                            .foregroundColor(.green)
+                            
+                            // Troubleshooting tip
+                            Text("Tip: Check ESP32 is named 'Rallie_ESP32'")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.vertical, 5)
                     }
                 }
                 

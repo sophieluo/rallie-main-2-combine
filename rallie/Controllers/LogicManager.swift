@@ -24,12 +24,12 @@ class LogicManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let bluetoothManager: BluetoothManager
     
-    @Published var controlMode: ControlMode = .manual
+    @Published var controlMode: ControlMode = .interactive
     
     // Ball parameters that can be configured by the user
     @Published var ballSpeed: Int = 50 // Default 50mph (range: 20-80mph)
     @Published var spinType: SpinType = .flat // Default flat spin
-    @Published var ballActive: Bool = false // Whether the ball machine is active
+    @Published var ballActive: Bool = true // Whether the ball machine is active
     @Published var launchInterval: TimeInterval = 3.0 // Default 3s (range: 2-9s)
     
     // Track the last command zone for display
@@ -64,9 +64,20 @@ class LogicManager: ObservableObject {
                 // Store the new position with timestamp
                 self.timedPositionBuffer.append((point: position, timestamp: Date()))
                 
+                // Debug logging to check conditions
+                print("🔍 Position received: \(position), controlMode: \(self.controlMode), ballActive: \(self.ballActive)")
+                
                 // In interactive mode, we process positions as they come in
                 if self.controlMode == .interactive && self.ballActive {
+                    print("✅ Conditions met for sending command: interactive mode and ball active")
                     self.attemptToSendSmoothedCommand()
+                } else {
+                    if self.controlMode != .interactive {
+                        print("❌ Not sending command: controlMode is not interactive")
+                    }
+                    if !self.ballActive {
+                        print("❌ Not sending command: ball machine is not active")
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -74,14 +85,28 @@ class LogicManager: ObservableObject {
     
     /// Manually send a command for a specific target point (used in manual mode)
     func sendCommandForTargetPoint(_ point: CGPoint) {
-        guard controlMode == .manual else { return }
-        
         // Update last command zone for display
         lastCommandZone = CommandLookup.zoneID(for: point)
         
-        let commandBytes = CommandLookup.command(for: point, speed: ballSpeed, spin: spinType, startBall: ballActive)
-        bluetoothManager.sendCommand(commandBytes)
-        print("📤 Manual mode: Sent command for point \(point)")
+        // Convert court coordinates to integers for ESP32
+        // Scale to 0-1000 range for better precision
+        let x = Int(min(max(point.x, 0), CourtLayout.courtWidth) * (1000.0 / CourtLayout.courtWidth))
+        let y = Int(min(max(point.y, 0), CourtLayout.courtLength) * (1000.0 / CourtLayout.courtLength))
+        
+        // Convert spin type to integer value
+        let spinValue: Int
+        switch spinType {
+        case .flat:
+            spinValue = 0
+        case .topspin:
+            spinValue = 1
+        case .extremeTopspin:
+            spinValue = 2
+        }
+        
+        // Send position command directly to ESP32
+        bluetoothManager.sendPositionCommand(x: x, y: y, speed: ballSpeed, spin: spinValue)
+        print("📤 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Sent command for point \(point)")
         
         // Update last sent timestamp
         lastCommandSent = Date()
@@ -113,8 +138,8 @@ class LogicManager: ObservableObject {
         ballActive = !ballActive
         
         if !ballActive {
-            // Stop the machine
-            bluetoothManager.stopMachine()
+            // Stop the machine by sending a stop command
+            bluetoothManager.sendPositionCommand(x: 0, y: 0, speed: 0, spin: 0)
             print("⏹️ Ball machine stopped")
         } else {
             print("▶️ Ball machine activated")
@@ -138,7 +163,10 @@ class LogicManager: ObservableObject {
         let now = Date()
         
         // Respect interval between commands
-        guard now.timeIntervalSince(lastCommandSent) >= launchInterval else { return }
+        guard now.timeIntervalSince(lastCommandSent) >= launchInterval else {
+            print("⏱️ Command skipped: Interval not reached (last: \(String(format: "%.1f", now.timeIntervalSince(lastCommandSent)))s / required: \(String(format: "%.1f", launchInterval))s)")
+            return
+        }
         
         // Keep only data from the last 3 seconds
         timedPositionBuffer = timedPositionBuffer.filter { now.timeIntervalSince($0.timestamp) <= 3.0 }
@@ -153,6 +181,8 @@ class LogicManager: ObservableObject {
             return
         }
         
+        print("🎯 Found \(recent.count) positions in averaging window of \(String(format: "%.1f", positionAveragingWindow))s")
+        
         // Compute average position to represent player's current location
         let avgX = recent.map { $0.x }.reduce(0, +) / CGFloat(recent.count)
         let avgY = recent.map { $0.y }.reduce(0, +) / CGFloat(recent.count)
@@ -164,18 +194,34 @@ class LogicManager: ObservableObject {
         // Update last command zone for display
         lastCommandZone = zoneID
         
-        // Get command with current ball speed and spin settings
-        let commandBytes = CommandLookup.command(for: avgPoint, speed: ballSpeed, spin: spinType, startBall: ballActive)
+        // Convert court coordinates to integers for ESP32
+        // Scale to 0-1000 range for better precision
+        let x = Int(avgPoint.x * (1000.0 / CourtLayout.courtWidth))
+        let y = Int(avgPoint.y * (1000.0 / CourtLayout.courtLength))
+        
+        // Convert spin type to integer value
+        let spinValue: Int
+        switch spinType {
+        case .flat:
+            spinValue = 0
+        case .topspin:
+            spinValue = 1
+        case .extremeTopspin:
+            spinValue = 2
+        }
         
         if let zoneID = zoneID {
             print("📍 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged player position: \(avgPoint), mapped to zone \(zoneID)")
-            print("🏓 Using ball speed: \(ballSpeed)mph, spin: \(spinType.description), interval: \(String(format: "%.1f", launchInterval))s")
         } else {
-            print("❓ \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged point \(avgPoint) is outside zone grid — using fallback")
+            print("❓ \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged point \(avgPoint) is outside zone grid — using actual position anyway")
         }
         
-        // Send the command via Bluetooth
-        bluetoothManager.sendCommand(commandBytes)
+        print("🏓 Using ball speed: \(ballSpeed)mph, spin: \(spinType.description), interval: \(String(format: "%.1f", launchInterval))s")
+        
+        // Always send position command with the player's actual position, regardless of zone
+        print("🚀 ATTEMPTING TO SEND COMMAND: x=\(x), y=\(y), speed=\(ballSpeed), spin=\(spinValue)")
+        bluetoothManager.sendPositionCommand(x: x, y: y, speed: ballSpeed, spin: spinValue)
+        print("✅ Command sent to BluetoothManager")
         
         // Update last sent timestamp
         lastCommandSent = now
