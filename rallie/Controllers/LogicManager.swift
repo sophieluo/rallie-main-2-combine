@@ -105,7 +105,7 @@ class LogicManager: ObservableObject {
         }
         
         // Send position command directly to ESP32
-        bluetoothManager.sendPositionCommand(x: x, y: y, speed: ballSpeed, spin: spinValue)
+        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue))
         print("📤 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Sent command for point \(point)")
         
         // Update last sent timestamp
@@ -220,7 +220,7 @@ class LogicManager: ObservableObject {
         
         // Always send position command with the player's actual position, regardless of zone
         print("🚀 ATTEMPTING TO SEND COMMAND: x=\(x), y=\(y), speed=\(ballSpeed), spin=\(spinValue)")
-        bluetoothManager.sendPositionCommand(x: x, y: y, speed: ballSpeed, spin: spinValue)
+        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue))
         print("✅ Command sent to BluetoothManager")
         
         // Update last sent timestamp

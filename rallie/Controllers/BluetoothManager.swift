@@ -1,232 +1,376 @@
 import CoreBluetooth
+import Combine
 
 class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    // Singleton instance for shared access
     static let shared = BluetoothManager()
     
     private var centralManager: CBCentralManager!
-    private var targetPeripheral: CBPeripheral?
+    @Published var targetPeripheral: CBPeripheral?
     private var commandCharacteristic: CBCharacteristic?
-    private var responseCharacteristic: CBCharacteristic?
-
-    // Hardcoded UUIDs to match ESP32
-    private let serviceUUID = CBUUID(string: "12345678-1234-1234-1234-123456789abc")
-    private let characteristicUUID = CBUUID(string: "abcd1234-1234-1234-1234-abcdef123456")
-    
-    // Response status codes from MCU
-    enum ResponseStatus: UInt8 {
-        case rejected = 0
-        case accepted = 1
-        case completed = 2
-    }
+    private var notifyCharacteristic: CBCharacteristic?
     
     // Published properties for UI updates
     @Published var isConnected = false
-    @Published var lastResponseStatus: ResponseStatus?
-
+    @Published var isConnecting = false
+    @Published var connectionStatus = "Disconnected"
+    @Published var discoveredPeripherals: [CBPeripheral] = []
+    @Published var rssiValues: [UUID: NSNumber] = [:]
+    
+    // Specific UUIDs from the screenshot
+    private let customServiceUUID = CBUUID(string: "5833FF01-9B8B-5191-6142-22A4536EF123")
+    private let writeCharacteristicUUID = CBUUID(string: "5833FF02-9B8B-5191-6142-22A4536EF123")
+    private let notifyCharacteristicUUID = CBUUID(string: "5833FF03-9B8B-5191-6142-22A4536EF123")
+    
+    // Alternative service with write & notify characteristics
+    private let alternativeServiceUUID = CBUUID(string: "55535343-FE7D-4AE5-8FA9-9FAFD205E455")
+    private let alternativeWriteCharacteristicUUID = CBUUID(string: "49535343-8841-43F4-A8D4-ECBE34729BB3")
+    private let alternativeNotifyCharacteristicUUID = CBUUID(string: "49535343-1E4D-4BD9-BA61-23C647249616")
+    
+    // Target device name - set to "ai-thinker" based on the screenshot
+    private let targetDeviceName = "ai-thinker"
+    
     override init() {
         super.init()
-        
-        print("🔵 BluetoothManager initialized with hardcoded UUIDs:")
-        print("   Service UUID: \(serviceUUID.uuidString)")
-        print("   Characteristic UUID: \(characteristicUUID.uuidString)")
-        
         centralManager = CBCentralManager(delegate: self, queue: nil)
+        print("🔵 BluetoothManager initialized")
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        print("🔵 Bluetooth state updated: \(central.state.rawValue)")
-
-        if central.state == .poweredOn {
-            print("🔍 Starting scan for peripherals...")
-            // Scan for all peripherals first to debug
-            centralManager.scanForPeripherals(withServices: nil, options: nil)
-        } else {
-            print("⚠️ Bluetooth not available: \(central.state.rawValue)")
+        switch central.state {
+        case .poweredOn:
+            print("🔍 Bluetooth is powered on")
+            connectionStatus = "Ready to scan"
+        case .poweredOff:
+            connectionStatus = "Bluetooth is powered off"
+            print("⚠️ Bluetooth is powered off")
+        case .unsupported:
+            connectionStatus = "Bluetooth is not supported"
+            print("⚠️ Bluetooth is not supported")
+        case .unauthorized:
+            connectionStatus = "Bluetooth is not authorized"
+            print("⚠️ Bluetooth is not authorized")
+        case .resetting:
+            connectionStatus = "Bluetooth is resetting"
+            print("⚠️ Bluetooth is resetting")
+        case .unknown:
+            connectionStatus = "Bluetooth state is unknown"
+            print("⚠️ Bluetooth state is unknown")
+        @unknown default:
+            connectionStatus = "Unknown Bluetooth state"
+            print("⚠️ Unknown Bluetooth state")
         }
     }
-
+    
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        print("🔵 Discovered peripheral: \(peripheral.name ?? "Unknown") with identifier: \(peripheral.identifier)")
+        // Store the RSSI value
+        rssiValues[peripheral.identifier] = RSSI
+        
+        // Add to discovered peripherals list if not already there
+        if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+            discoveredPeripherals.append(peripheral)
+            
+            // Sort peripherals by signal strength (strongest first)
+            discoveredPeripherals.sort { (p1, p2) -> Bool in
+                let rssi1 = rssiValues[p1.identifier]?.intValue ?? -100
+                let rssi2 = rssiValues[p2.identifier]?.intValue ?? -100
+                return rssi1 > rssi2
+            }
+        }
+        
+        // Log discovery
+        let name = peripheral.name ?? "Unknown"
+        print("🔵 Discovered peripheral: \(name) with identifier: \(peripheral.identifier)")
         print("   Advertisement data: \(advertisementData)")
         print("   RSSI: \(RSSI) dBm")
         
-        // Connect to any peripheral named "Rallie_ESP32"
-        if peripheral.name == "Rallie_ESP32" {
-            print("✅ Found target peripheral: \(peripheral.name ?? "Unknown")")
-            targetPeripheral = peripheral
-            centralManager.stopScan()
-            print("🔍 Stopping scan and connecting...")
-            centralManager.connect(peripheral, options: nil)
-            peripheral.delegate = self
+        // Auto-connect if it matches our target device name
+        if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
+           (localName.lowercased().contains(targetDeviceName) || name.lowercased().contains(targetDeviceName)) {
+            print("🔵 Found target device: \(name)")
+            connectToPeripheral(peripheral)
         }
     }
-
+    
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         print("✅ Connected to peripheral: \(peripheral.name ?? "Unknown")")
+        connectionStatus = "Connected to \(peripheral.name ?? "Unknown")"
         isConnected = true
+        isConnecting = false
         
-        // Discover all services first to debug
-        print("🔍 Discovering all services...")
+        // Discover all services
         peripheral.discoverServices(nil)
     }
     
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        print("❌ Disconnected from peripheral")
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        print("❌ Failed to connect: \(error?.localizedDescription ?? "Unknown error")")
+        connectionStatus = "Failed to connect"
         isConnected = false
-        // Attempt to reconnect
-        if let peripheral = targetPeripheral {
-            centralManager.connect(peripheral, options: nil)
-        }
+        isConnecting = false
     }
-
+    
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        print("❌ Disconnected: \(error?.localizedDescription ?? "No error")")
+        connectionStatus = "Disconnected"
+        isConnected = false
+        isConnecting = false
+        
+        // Clear the command characteristic
+        commandCharacteristic = nil
+        notifyCharacteristic = nil
+    }
+    
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        if let error = error {
-            print("⚠️ Error discovering services: \(error.localizedDescription)")
+        guard error == nil else {
+            print("❌ Error discovering services: \(error!.localizedDescription)")
             return
         }
         
-        guard let services = peripheral.services else { 
-            print("⚠️ No services found")
-            return 
+        guard let services = peripheral.services else {
+            print("❌ No services found")
+            return
         }
         
-        print("🔍 Discovered \(services.count) services:")
+        print("🔍 Discovered \(services.count) services")
+        
         for service in services {
-            print("   Service: \(service.uuid.uuidString)")
+            print("🔍 Service: \(service.uuid)")
             
-            // Discover all characteristics for debugging
-            print("🔍 Discovering characteristics for service: \(service.uuid.uuidString)...")
+            // Check if this is one of our target services
+            if service.uuid == customServiceUUID || service.uuid == alternativeServiceUUID {
+                print("✅ Found target service: \(service.uuid)")
+            }
+            
+            // Discover characteristics for each service
             peripheral.discoverCharacteristics(nil, for: service)
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        if let error = error {
-            print("⚠️ Error discovering characteristics: \(error.localizedDescription)")
+        guard error == nil else {
+            print("❌ Error discovering characteristics: \(error!.localizedDescription)")
             return
         }
         
-        guard let characteristics = service.characteristics else { 
-            print("⚠️ No characteristics found for service: \(service.uuid.uuidString)")
-            return 
+        guard let characteristics = service.characteristics else {
+            print("❌ No characteristics found for service \(service.uuid)")
+            return
         }
         
-        print("🔍 Discovered \(characteristics.count) characteristics for service \(service.uuid.uuidString):")
-        for char in characteristics {
-            print("   Characteristic: \(char.uuid.uuidString), Properties: \(char.properties.rawValue)")
+        print("🔍 Service \(service.uuid) has \(characteristics.count) characteristics")
+        
+        for characteristic in characteristics {
+            print("🔍 Characteristic: \(characteristic.uuid), Properties: \(characteristic.properties)")
             
-            // Match our target characteristic
-            if char.uuid.uuidString.lowercased() == characteristicUUID.uuidString.lowercased() {
-                self.commandCharacteristic = char
-                self.responseCharacteristic = char
-                print("✅ Found target characteristic: \(char.uuid.uuidString)")
-                
-                // Enable notifications if the characteristic supports it
-                if char.properties.contains(.notify) {
-                    print("🔔 Enabling notifications for characteristic")
-                    peripheral.setNotifyValue(true, for: char)
-                }
-                
-                // After finding the characteristic, notify that we're ready to send commands
-                print("✅ Bluetooth setup complete, ready to send commands")
+            // Check for our specific write characteristic
+            if characteristic.uuid == writeCharacteristicUUID || characteristic.uuid == alternativeWriteCharacteristicUUID {
+                print("✅ Found write characteristic: \(characteristic.uuid)")
+                commandCharacteristic = characteristic
             }
+            
+            // Check for our specific notify characteristic
+            if characteristic.uuid == notifyCharacteristicUUID || characteristic.uuid == alternativeNotifyCharacteristicUUID {
+                print("✅ Found notify characteristic: \(characteristic.uuid)")
+                notifyCharacteristic = characteristic
+                peripheral.setNotifyValue(true, for: characteristic)
+            }
+            
+            // Subscribe to notifications if the characteristic supports it
+            if (characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate)) &&
+               notifyCharacteristic == nil {
+                print("🔔 Subscribing to notifications for: \(characteristic.uuid)")
+                peripheral.setNotifyValue(true, for: characteristic)
+            }
+        }
+        
+        if commandCharacteristic != nil {
+            print("✅ Ready to send commands")
+            // Send an initial AT command to test the connection
+            sendATCommand("AT")
+        } else {
+            print("⚠️ No suitable write characteristic found")
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil else {
+            print("❌ Error receiving data: \(error!.localizedDescription)")
+            return
+        }
+        
         guard let data = characteristic.value else {
-            print("⚠️ Received empty response data")
+            print("❌ No data received")
             return
         }
         
-        // Log the raw response data for debugging
-        print("📥 Received response data: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        
-        // For ESP32 implementation, we don't expect specific response formats yet
-        // Just mark the command as completed
-        lastResponseStatus = .completed
+        if let response = String(data: data, encoding: .utf8) {
+            print("📥 Received: \(response)")
+        } else {
+            print("📥 Received binary data: \(data.count) bytes")
+            print("📥 Raw data: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        }
     }
     
-    // Send command to ESP32 without completion handler (for compatibility with LogicManager)
-    func sendCommand(_ commandBytes: [UInt8]) {
-        guard let peripheral = targetPeripheral,
-              let characteristic = commandCharacteristic else {
-            print("⚠️ Cannot send command – not connected")
+    // Send position command for player tracking
+    func sendPositionCommand(x: Double, y: Double, speed: Double, spin: Double) {
+        if !isConnected || commandCharacteristic == nil {
+            print("❌ ERROR: Cannot send position command - peripheral not connected")
+            printConnectionStatus()
             return
         }
         
-        let data = Data(commandBytes)
-        print("📤 Sending command bytes: \(commandBytes.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
-    }
-    
-    // Send command to ESP32
-    func sendCommand(_ commandBytes: [UInt8], completion: @escaping () -> Void) {
-        guard let peripheral = targetPeripheral,
-              let characteristic = commandCharacteristic else {
-            print("⚠️ Cannot send command – not connected")
-            return
-        }
-        
-        let data = Data(commandBytes)
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
-        
-        // Print command details for debugging
-        print("📤 Sent command: \(commandBytes.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        
-        completion()
-    }
-    
-    // Send position command to ESP32
-    func sendPositionCommand(x: Int, y: Int, speed: Int, spin: Int) {
         print("📤 sendPositionCommand called with x=\(x), y=\(y), speed=\(speed), spin=\(spin)")
         
-        guard let peripheral = targetPeripheral else {
-            print("❌ ERROR: Cannot send position command - peripheral not connected")
-            return
+        // Convert normalized coordinates (0.0-1.0) to angles
+        // Map x (0.0-1.0) to Yaw angle (0-90)
+        let yawAngle = UInt8(min(90, max(0, Int(x * 90))))
+        
+        // Map y (0.0-1.0) to Pitch angle (0-90)
+        // Invert y since 0 is net (low pitch) and 1 is baseline (high pitch)
+        let pitchAngle = UInt8(min(90, max(0, Int((1-y) * 90))))
+        
+        // Convert speed to wheel speeds (0-100)
+        let wheelSpeed = UInt8(min(100, max(0, Int(speed * 2.5)))) // Convert mph to percentage
+        
+        // Convert spin (-1.0 to 1.0) to differential wheel speeds
+        // Positive spin (topspin) = upper wheel faster
+        // Negative spin (backspin) = lower wheel faster
+        var upperWheelSpeed = wheelSpeed
+        var lowerWheelSpeed = wheelSpeed
+        
+        if spin > 0 {
+            // Topspin - upper wheel faster
+            upperWheelSpeed = UInt8(min(100, Double(wheelSpeed) * (1 + spin * 0.5)))
+            lowerWheelSpeed = UInt8(max(0, Double(wheelSpeed) * (1 - spin * 0.3)))
+        } else if spin < 0 {
+            // Backspin - lower wheel faster
+            upperWheelSpeed = UInt8(max(0, Double(wheelSpeed) * (1 + spin * 0.3)))
+            lowerWheelSpeed = UInt8(min(100, Double(wheelSpeed) * (1 - spin * 0.5)))
         }
         
-        guard let characteristic = commandCharacteristic else {
-            print("❌ ERROR: Cannot send position command - characteristic not found")
-            return
+        // Create the 10-byte command according to the protocol
+        var command: [UInt8] = [
+            0x5A,                // Byte 0: Header 1 (fixed 5A)
+            0xA5,                // Byte 1: Header 2 (fixed A5)
+            0x83,                // Byte 2: Data source (fixed 83)
+            upperWheelSpeed,     // Byte 3: Upper wheel speed (0-100)
+            lowerWheelSpeed,     // Byte 4: Lower wheel speed (0-100)
+            pitchAngle,          // Byte 5: Pitch angle (0-90)
+            yawAngle,            // Byte 6: Yaw angle (0-90)
+            50,                  // Byte 7: Ball feed speed (50% default)
+            1,                   // Byte 8: Control bit (1 = start shooting)
+            0                    // Byte 9: CRC16 (calculated below)
+        ]
+        
+        // Calculate CRC16 (simple XOR implementation for now)
+        var crc: UInt8 = 0
+        for i in 0..<(command.count - 1) {
+            crc ^= command[i]
         }
+        command[9] = crc
         
-        // Format: [x_pos (2 bytes), y_pos (2 bytes), speed (1 byte), spin (1 byte)]
-        let xHigh = UInt8((x >> 8) & 0xFF)
-        let xLow = UInt8(x & 0xFF)
-        let yHigh = UInt8((y >> 8) & 0xFF)
-        let yLow = UInt8(y & 0xFF)
-        
-        let command: [UInt8] = [xHigh, xLow, yHigh, yLow, UInt8(speed), UInt8(spin)]
+        // Send the binary command
         let data = Data(command)
+        sendBinaryCommand(data)
         
-        print("📤 Sending command to ESP32: x=\(x), y=\(y), speed=\(speed), spin=\(spin)")
-        print("📤 Raw bytes: \(command.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        print("📤 Connection status: peripheral=\(peripheral.name ?? "Unknown"), state=\(peripheral.state.rawValue)")
+        // Log the command details
+        print("📤 Sent binary command: \(command.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        print("   Upper Wheel: \(upperWheelSpeed)%, Lower Wheel: \(lowerWheelSpeed)%")
+        print("   Pitch: \(pitchAngle)°, Yaw: \(yawAngle)°, Feed: 50%, Control: 1")
+    }
+    
+    // Send a binary command directly
+    func sendBinaryCommand(_ data: Data) {
+        guard let peripheral = targetPeripheral,
+              let characteristic = commandCharacteristic else {
+            print("⚠️ Cannot send binary command – not connected")
+            return
+        }
         
         peripheral.writeValue(data, for: characteristic, type: .withResponse)
-        print("📤 writeValue called successfully")
     }
     
-    // Test function to send a simple command and verify Bluetooth is working
+    // Legacy method for compatibility with AT commands
+    func sendATCommand(_ command: String) {
+        print("⚠️ AT commands are deprecated. Using binary protocol instead.")
+        
+        // Extract parameters from AT command if possible
+        if command.hasPrefix("AT+SHOOT=") || command.hasPrefix("AT+DATA=") {
+            let paramsString = command.components(separatedBy: "=").last ?? ""
+            let params = paramsString.components(separatedBy: ",")
+            
+            if params.count >= 3 {
+                // Try to extract x, y, speed from the AT command
+                if let x = Double(params[0]),
+                   let y = Double(params[1]),
+                   let speed = Double(params[2]) {
+                    
+                    // Default spin to 0 if not provided
+                    let spin = params.count > 3 ? (Double(params[3]) ?? 0) : 0
+                    
+                    // Convert to binary protocol
+                    sendPositionCommand(x: x, y: y, speed: speed, spin: spin)
+                    return
+                }
+            }
+        }
+        
+        // If we couldn't parse the AT command, send a default command
+        sendPositionCommand(x: 0.5, y: 0.5, speed: 40, spin: 0)
+    }
+    
+    // Send a test command to the center of the court
     func sendTestCommand() {
-        print("🧪 Sending test command to ESP32...")
-        
-        // Print current connection status
-        printConnectionStatus()
-        
-        // Send a simple command to the center of the court
-        sendPositionCommand(x: 500, y: 500, speed: 40, spin: 0)
+        sendPositionCommand(x: 0.5, y: 0.5, speed: 40, spin: 0)
     }
     
-    // Add a debug function to print current connection status
+    // Start scanning for devices
+    func startScanning() {
+        if centralManager.state == .poweredOn {
+            connectionStatus = "Scanning..."
+            centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+            print("🔍 Started scanning")
+        } else {
+            print("⚠️ Bluetooth not ready")
+        }
+    }
+    
+    // Stop scanning
+    func stopScanning() {
+        centralManager.stopScan()
+        connectionStatus = isConnected ? "Connected" : "Scan stopped"
+        print("🛑 Stopped scanning")
+    }
+    
+    // Connect to a specific peripheral
+    func connectToPeripheral(_ peripheral: CBPeripheral) {
+        targetPeripheral = peripheral
+        peripheral.delegate = self
+        isConnecting = true
+        centralManager.connect(peripheral, options: nil)
+        connectionStatus = "Connecting to \(peripheral.name ?? "Unknown")..."
+        print("🔌 Connecting to \(peripheral.name ?? "Unknown")")
+    }
+    
+    // Disconnect from current peripheral
+    func disconnect() {
+        if let peripheral = targetPeripheral {
+            centralManager.cancelPeripheralConnection(peripheral)
+        }
+    }
+    
+    // Print connection status for debugging
     func printConnectionStatus() {
         print("🔍 --- BLUETOOTH CONNECTION STATUS ---")
         print("   Connected: \(isConnected)")
         print("   Target peripheral: \(targetPeripheral?.name ?? "None")")
         print("   Command characteristic: \(commandCharacteristic != nil ? "Found" : "Not found")")
+        print("   Notify characteristic: \(notifyCharacteristic != nil ? "Found" : "Not found")")
         print("🔍 ---------------------------------")
+    }
+    
+    // Legacy method for compatibility
+    func sendCommand(_ command: String) {
+        sendATCommand(command)
     }
 }

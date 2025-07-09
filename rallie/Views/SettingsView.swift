@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var cameraController: CameraController = .shared
     @ObservedObject var bluetoothManager: BluetoothManager = .shared
     @State private var showCamera = false
+    @State private var showBluetoothScanner = false
     
     // Ball speed settings
     private let speedOptions = [20, 30, 40, 50, 60, 70, 80]
@@ -66,20 +67,35 @@ struct SettingsView: View {
                 }
                 
                 // Simple Bluetooth Debug Section
-                Section(header: Text("Bluetooth Debug")) {
+                Section(header: Text("Bluetooth Connection")) {
                     Toggle("Show Debug Controls", isOn: $showDebugSection)
+                    
+                    // Bluetooth Scanner Button
+                    Button(action: {
+                        showBluetoothScanner = true
+                    }) {
+                        HStack {
+                            Image(systemName: "bluetooth.circle")
+                            Text("Scan for Bluetooth Devices")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .foregroundColor(.blue)
+                    
+                    // Connection status with color indicator
+                    HStack {
+                        Text("Connection Status:")
+                        Spacer()
+                        Text(bluetoothManager.isConnected ? "Connected" : "Disconnected")
+                            .foregroundColor(bluetoothManager.isConnected ? .green : .red)
+                            .fontWeight(.bold)
+                    }
                     
                     if showDebugSection {
                         VStack(alignment: .leading, spacing: 10) {
-                            // Connection status with color indicator
-                            HStack {
-                                Text("Connection Status:")
-                                Spacer()
-                                Text(bluetoothManager.isConnected ? "Connected" : "Disconnected")
-                                    .foregroundColor(bluetoothManager.isConnected ? .green : .red)
-                                    .fontWeight(.bold)
-                            }
-                            
                             // Basic debug buttons
                             Button("Print Connection Status") {
                                 bluetoothManager.printConnectionStatus()
@@ -87,12 +103,12 @@ struct SettingsView: View {
                             .foregroundColor(.blue)
                             
                             Button("Send Test Command (Center Court)") {
-                                bluetoothManager.sendTestCommand()
+                                bluetoothManager.sendATCommand("DATA=0.5,0.5,40,0")
                             }
                             .foregroundColor(.green)
                             
-                            // Troubleshooting tip
-                            Text("Tip: Check ESP32 is named 'Rallie_ESP32'")
+                            // Updated troubleshooting tip
+                            Text("Tip: Look for a device named 'ai-thinker' in the scanner")
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
@@ -115,15 +131,16 @@ struct SettingsView: View {
                     .buttonStyle(.borderedProminent)
                 }
             }
-            .navigationTitle("Ball Machine Settings")
+            .navigationTitle("Settings")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
                         dismiss()
-                    }) {
-                        Label("Back", systemImage: "chevron.backward")
                     }
                 }
+            }
+            .sheet(isPresented: $showBluetoothScanner) {
+                BluetoothScannerView(bluetoothManager: bluetoothManager)
             }
             .fullScreenCover(isPresented: $showCamera) {
                 if #available(iOS 16.0, *) {
