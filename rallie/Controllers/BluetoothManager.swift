@@ -31,8 +31,11 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     override init() {
         super.init()
-        centralManager = CBCentralManager(delegate: self, queue: nil)
+        
         print("🔵 BluetoothManager initialized")
+        
+        // Initialize the central manager with self as delegate
+        centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -203,11 +206,49 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             return
         }
         
-        if let response = String(data: data, encoding: .utf8) {
-            print("📥 Received: \(response)")
+        // Print raw data for all responses
+        print("📥 Raw data received: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        
+        // Handle MCU responses according to protocol v0.3
+        if data.count == 5 && data[0] == 0x5A && data[1] == 0xA5 && data[2] == 0x82 {
+            let responseCode = data[3]
+            let receivedCRC = data[4]
+            
+            print("📥 ACK Response: [Header: 0x5A 0xA5, Source: 0x82, Code: \(String(format: "0x%02X", responseCode)), CRC: \(String(format: "0x%02X", receivedCRC))]")
+            
+            // Calculate CRC16 using the Modbus algorithm
+            var crc: UInt16 = 0xFFFF
+            for i in 0..<4 { // Calculate CRC for bytes 0-3
+                crc ^= UInt16(data[i])
+                for _ in 0..<8 {
+                    let carryFlag = crc & 0x0001
+                    crc >>= 1
+                    if carryFlag == 1 {
+                        crc ^= 0xA001
+                    }
+                }
+            }
+            // Use the low byte of the CRC-16 result
+            let calculatedCRC = UInt8(crc & 0xFF)
+            
+            if calculatedCRC == receivedCRC {
+                switch responseCode {
+                case 0:
+                    print("⚠️ Command rejected by device")
+                case 1:
+                    print("✅ Command accepted and started execution")
+                case 2:
+                    print("✅ Command execution completed")
+                default:
+                    print("📥 Unknown response code: \(responseCode)")
+                }
+            } else {
+                print("❌ CRC error in device response: expected \(String(format: "0x%02X", calculatedCRC)), got \(String(format: "0x%02X", receivedCRC))")
+            }
+        } else if let response = String(data: data, encoding: .utf8) {
+            print("📥 Received text: \(response)")
         } else {
             print("📥 Received binary data: \(data.count) bytes")
-            print("📥 Raw data: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
         }
     }
     
@@ -262,12 +303,20 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             0                    // Byte 9: CRC16 (calculated below)
         ]
         
-        // Calculate CRC16 (simple XOR implementation for now)
-        var crc: UInt8 = 0
+        // Calculate CRC16 using the Modbus algorithm
+        var crc: UInt16 = 0xFFFF
         for i in 0..<(command.count - 1) {
-            crc ^= command[i]
+            crc ^= UInt16(command[i])
+            for _ in 0..<8 {
+                let carryFlag = crc & 0x0001
+                crc >>= 1
+                if carryFlag == 1 {
+                    crc ^= 0xA001
+                }
+            }
         }
-        command[9] = crc
+        // Use the low byte of the CRC-16 result
+        command[9] = UInt8(crc & 0xFF)
         
         // Send the binary command
         let data = Data(command)
@@ -285,6 +334,18 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
               let characteristic = commandCharacteristic else {
             print("⚠️ Cannot send binary command – not connected")
             return
+        }
+        
+        // Print the command being sent
+        print("📤 Sending command: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        
+        // If command follows the 10-byte protocol, print a detailed breakdown
+        if data.count == 10 && data[0] == 0x5A && data[1] == 0xA5 && data[2] == 0x83 {
+            print("📤 Command details: [Header: 0x5A 0xA5, Source: 0x83, " +
+                  "UpperWheel: \(data[3])%, LowerWheel: \(data[4])%, " +
+                  "Pitch: \(data[5])°, Yaw: \(data[6])°, " +
+                  "Feed: \(data[7])%, Control: \(data[8] == 1 ? "Start" : "Stop"), " +
+                  "CRC: \(String(format: "0x%02X", data[9]))]")
         }
         
         peripheral.writeValue(data, for: characteristic, type: .withResponse)

@@ -91,24 +91,32 @@ struct CommandLookup {
         func toCommandBytes(startBall: Bool = true) -> [UInt8] {
             // Protocol: [0x5A, 0xA5, 0x83, upperWheel, lowerWheel, pitch, yaw, feedSpeed, controlBit, crc]
             var bytes: [UInt8] = [
-                0x5A,               // Header 1
-                0xA5,               // Header 2
-                0x83,               // Source
-                upperWheelSpeed,    // Upper wheel speed (0-100%)
-                lowerWheelSpeed,    // Lower wheel speed (0-100%)
-                pitchAngle,         // Pitch angle (0-90)
-                yawAngle,           // Yaw angle (0-90)
-                feedSpeed,          // Feed speed (0-100%)
-                startBall ? 1 : 0,  // Control bit: 0=stop, 1=start
-                0                   // CRC (calculated below)
+                0x5A,               // Byte 0: Header 1 (fixed 5A)
+                0xA5,               // Byte 1: Header 2 (fixed A5)
+                0x83,               // Byte 2: Data source (fixed 83)
+                upperWheelSpeed,    // Byte 3: Upper wheel speed (0-100%)
+                lowerWheelSpeed,    // Byte 4: Lower wheel speed (0-100%)
+                pitchAngle,         // Byte 5: Pitch angle (0-90)
+                yawAngle,           // Byte 6: Yaw angle (0-90)
+                feedSpeed,          // Byte 7: Feed speed (0-100%)
+                startBall ? 1 : 0,  // Byte 8: Control bit: 0=stop, 1=start
+                0                   // Byte 9: CRC (calculated below)
             ]
             
-            // Calculate CRC (simple XOR of all previous bytes for demonstration)
-            var crc: UInt8 = 0
+            // Calculate CRC16 using the Modbus algorithm
+            var crc: UInt16 = 0xFFFF
             for i in 0..<(bytes.count - 1) {
-                crc ^= bytes[i]
+                crc ^= UInt16(bytes[i])
+                for _ in 0..<8 {
+                    let carryFlag = crc & 0x0001
+                    crc >>= 1
+                    if carryFlag == 1 {
+                        crc ^= 0xA001
+                    }
+                }
             }
-            bytes[bytes.count - 1] = crc
+            // Use the low byte of the CRC-16 result
+            bytes[bytes.count - 1] = UInt8(crc & 0xFF)
             
             return bytes
         }
@@ -196,24 +204,32 @@ struct CommandLookup {
     static func createCommand(upperWheel: Int, lowerWheel: Int, pitch: Int, yaw: Int, feedSpeed: Int, startBall: Bool) -> [UInt8] {
         // Protocol: [0x5A, 0xA5, 0x83, upperWheel, lowerWheel, pitch, yaw, feedSpeed, controlBit, crc]
         var bytes: [UInt8] = [
-            0x5A,               // Header 1
-            0xA5,               // Header 2
-            0x83,               // Source
-            UInt8(upperWheel),    // Upper wheel speed (0-100%)
-            UInt8(lowerWheel),    // Lower wheel speed (0-100%)
-            UInt8(pitch),         // Pitch angle (0-90)
-            UInt8(yaw),           // Yaw angle (0-90)
-            UInt8(feedSpeed),     // Feed speed (0-100%)
-            startBall ? 1 : 0,  // Control bit: 0=stop, 1=start
-            0                   // CRC (calculated below)
+            0x5A,               // Byte 0: Header 1 (fixed 5A)
+            0xA5,               // Byte 1: Header 2 (fixed A5)
+            0x83,               // Byte 2: Data source (fixed 83)
+            UInt8(upperWheel),  // Byte 3: Upper wheel speed (0-100%)
+            UInt8(lowerWheel),  // Byte 4: Lower wheel speed (0-100%)
+            UInt8(pitch),       // Byte 5: Pitch angle (0-90)
+            UInt8(yaw),         // Byte 6: Yaw angle (0-90)
+            UInt8(feedSpeed),   // Byte 7: Feed speed (0-100%)
+            startBall ? 1 : 0,  // Byte 8: Control bit: 0=stop, 1=start
+            0                   // Byte 9: CRC (calculated below)
         ]
         
-        // Calculate CRC (simple XOR of all previous bytes for demonstration)
-        var crc: UInt8 = 0
+        // Calculate CRC16 using the Modbus algorithm
+        var crc: UInt16 = 0xFFFF
         for i in 0..<(bytes.count - 1) {
-            crc ^= bytes[i]
+            crc ^= UInt16(bytes[i])
+            for _ in 0..<8 {
+                let carryFlag = crc & 0x0001
+                crc >>= 1
+                if carryFlag == 1 {
+                    crc ^= 0xA001
+                }
+            }
         }
-        bytes[bytes.count - 1] = crc
+        // Use the low byte of the CRC-16 result
+        bytes[bytes.count - 1] = UInt8(crc & 0xFF)
         
         return bytes
     }
