@@ -385,6 +385,41 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         sendPositionCommand(x: 0.5, y: 0.5, speed: 40, spin: 0)
     }
     
+    // Send a raw byte command with hex string input
+    func sendRawByteCommand(_ hexString: String) {
+        // Convert hex string to data
+        let hexString = hexString.replacingOccurrences(of: " ", with: "")
+        var data = Data()
+        
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let nextIndex = hexString.index(index, offsetBy: 2, limitedBy: hexString.endIndex) ?? hexString.endIndex
+            let byteString = String(hexString[index..<nextIndex])
+            
+            if let byte = UInt8(byteString, radix: 16) {
+                data.append(byte)
+            } else {
+                print("⚠️ Invalid hex character in command: \(byteString)")
+                return
+            }
+            
+            if nextIndex == hexString.endIndex {
+                break
+            }
+            
+            index = nextIndex
+        }
+        
+        // Ensure we have a valid command
+        if data.count == 0 {
+            print("⚠️ Empty command")
+            return
+        }
+        
+        // Send the binary command
+        sendBinaryCommand(data)
+    }
+    
     // Start scanning for devices
     func startScanning() {
         if centralManager.state == .poweredOn {

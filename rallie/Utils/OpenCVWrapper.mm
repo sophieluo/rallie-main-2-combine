@@ -13,6 +13,7 @@
 
 #ifdef __cplusplus
 #import <opencv2/opencv.hpp>
+#import <opencv2/core/version.hpp>
 #endif
 
 using namespace cv;
@@ -69,4 +70,10 @@ using namespace cv;
     return [NSValue valueWithCGPoint:CGPointMake(output[0].x, output[0].y)];
 }
 
+
++ (void)logOpenCVVersion {
+    NSLog(@"OpenCV version: %s", CV_VERSION);
+}
+
 @end
+

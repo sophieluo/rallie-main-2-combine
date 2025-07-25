@@ -9,9 +9,16 @@ import SwiftUI
 
 @main
 struct rallieApp: App {
+    
+    init() {
+        // Log OpenCV version on app launch
+        OpenCVWrapper.logOpenCVVersion()
+    }
+    
     var body: some Scene {
         WindowGroup {
             HomeView()
         }
     }
 }
+

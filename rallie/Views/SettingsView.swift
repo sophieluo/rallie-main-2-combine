@@ -21,6 +21,12 @@ struct SettingsView: View {
     // Debug settings
     @State private var showDebugSection = false
     
+    // Manual command input states
+    @State private var byteInputs: [String] = Array(repeating: "00", count: 9)
+    @State private var calculatedCRC: String = "00"
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    
     // Initialize with current values from LogicManager
     init() {
         // Initialize state variables with current values from LogicManager
@@ -107,6 +113,13 @@ struct SettingsView: View {
                             }
                             .foregroundColor(.green)
                             
+                            // Manual command input section - directly shown without toggle
+                            Text("Manual Command Input")
+                                .font(.headline)
+                                .padding(.top, 10)
+                            
+                            manualCommandSection
+                            
                             // Updated troubleshooting tip
                             Text("Tip: Look for a device named 'ai-thinker' in the scanner")
                                 .font(.caption)
@@ -148,7 +161,7 @@ struct SettingsView: View {
                 } else {
                     // Fallback for earlier iOS versions
                     Text("Camera tracking requires iOS 16 or later")
-                        .padding()
+                        .padding( )
                 }
             }
             .onAppear {
@@ -156,6 +169,140 @@ struct SettingsView: View {
                 launchInterval = logicManager.launchInterval
             }
         }
+    }
+    
+    // Manual Command Input Section
+    var manualCommandSection: some View {
+        VStack(spacing: 15) {
+            Text("Enter 9 bytes (hex):")
+                .font(.subheadline)
+            
+            // Row 1
+            HStack(spacing: 10) {
+                ForEach(0..<3) { index in
+                    TextField("", text: $byteInputs[index])
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(width: 50)
+                        .multilineTextAlignment(.center)
+                        .onChange(of: byteInputs[index]) { newValue in
+                            formatHexInput(index: index, newValue: newValue)
+                        }
+                }
+            }
+            
+            // Row 2
+            HStack(spacing: 10) {
+                ForEach(3..<6) { index in
+                    TextField("", text: $byteInputs[index])
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(width: 50)
+                        .multilineTextAlignment(.center)
+                        .onChange(of: byteInputs[index]) { newValue in
+                            formatHexInput(index: index, newValue: newValue)
+                        }
+                }
+            }
+            
+            // Row 3
+            HStack(spacing: 10) {
+                ForEach(6..<9) { index in
+                    TextField("", text: $byteInputs[index])
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(width: 50)
+                        .multilineTextAlignment(.center)
+                        .onChange(of: byteInputs[index]) { newValue in
+                            formatHexInput(index: index, newValue: newValue)
+                        }
+                }
+            }
+            
+            // CRC byte (calculated automatically)
+            HStack {
+                Text("CRC:")
+                    .font(.headline)
+                Text(calculatedCRC)
+                    .font(.headline)
+                    .padding(8)
+                    .frame(width: 60)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+            }
+            
+            // Send button
+            Button(action: {
+                sendCommand()
+            }) {
+                Text("Send Command")
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue)
+                    .cornerRadius(10)
+            }
+            .padding(.top, 10)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+        .alert(isPresented: $showAlert) {
+            Alert(title: Text("Bluetooth Command"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+    }
+    
+    // Format and validate hex input
+    private func formatHexInput(index: Int, newValue: String) {
+        let filtered = newValue.filter { "0123456789ABCDEFabcdef".contains($0) }
+        let truncated = String(filtered.prefix(2))
+        
+        if truncated != newValue {
+            byteInputs[index] = truncated.uppercased()
+        } else {
+            byteInputs[index] = newValue.uppercased()
+        }
+        
+        calculateCRC()
+    }
+    
+    // Calculate CRC (simple XOR of all bytes)
+    private func calculateCRC() {
+        var crc: UInt8 = 0
+        
+        for byteString in byteInputs {
+            if let byte = UInt8(byteString, radix: 16) {
+                crc ^= byte // XOR operation
+            }
+        }
+        
+        calculatedCRC = String(format: "%02X", crc)
+    }
+    
+    // Send the command with CRC
+    private func sendCommand() {
+        guard bluetoothManager.isConnected else {
+            alertMessage = "Not connected to a Bluetooth device"
+            showAlert = true
+            return
+        }
+        
+        for (index, byteString) in byteInputs.enumerated() {
+            if byteString.count != 2 || UInt8(byteString, radix: 16) == nil {
+                alertMessage = "Invalid hex value at byte \(index + 1)"
+                showAlert = true
+                return
+            }
+        }
+        
+        var commandString = ""
+        for byteString in byteInputs {
+            commandString += byteString
+        }
+        commandString += calculatedCRC
+        
+        bluetoothManager.sendRawByteCommand(commandString)
+        alertMessage = "Command sent: \(commandString)"
+        showAlert = true
+        print("📤 Manual command sent: \(commandString)")
     }
 }
 
