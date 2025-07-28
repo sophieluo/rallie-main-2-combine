@@ -108,7 +108,7 @@ struct SettingsView: View {
                             }
                             .foregroundColor(.blue)
                             
-                            Button("Send Test Command (Center Court)") {
+                            Button("Send Predefined Test Command (Center Court)") {
                                 bluetoothManager.sendATCommand("DATA=0.5,0.5,40,0")
                             }
                             .foregroundColor(.green)
@@ -264,17 +264,24 @@ struct SettingsView: View {
         calculateCRC()
     }
     
-    // Calculate CRC (simple XOR of all bytes)
+    // Calculate CRC (Modbus CRC-16 algorithm)
     private func calculateCRC() {
-        var crc: UInt8 = 0
+        var crc: UInt16 = 0xFFFF
         
         for byteString in byteInputs {
             if let byte = UInt8(byteString, radix: 16) {
-                crc ^= byte // XOR operation
+                crc = crc ^ UInt16(byte)
+                for _ in 1...8 {
+                    if crc & 0x0001 != 0 {
+                        crc = (crc >> 1) ^ 0xA001
+                    } else {
+                        crc = crc >> 1
+                    }
+                }
             }
         }
         
-        calculatedCRC = String(format: "%02X", crc)
+        calculatedCRC = String(format: "%02X", crc & 0xFF)
     }
     
     // Send the command with CRC

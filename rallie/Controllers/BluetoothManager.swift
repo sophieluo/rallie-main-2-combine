@@ -188,8 +188,6 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         if commandCharacteristic != nil {
             print("✅ Ready to send commands")
-            // Send an initial AT command to test the connection
-            sendATCommand("AT")
         } else {
             print("⚠️ No suitable write characteristic found")
         }
@@ -370,19 +368,18 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                     let spin = params.count > 3 ? (Double(params[3]) ?? 0) : 0
                     
                     // Convert to binary protocol
-                    sendPositionCommand(x: x, y: y, speed: speed, spin: spin)
+                    print("AT command received: \(command)")
                     return
                 }
             }
         }
         
-        // If we couldn't parse the AT command, send a default command
-        sendPositionCommand(x: 0.5, y: 0.5, speed: 40, spin: 0)
+        print("AT command received: \(command)")
     }
     
     // Send a test command to the center of the court
     func sendTestCommand() {
-        sendPositionCommand(x: 0.5, y: 0.5, speed: 40, spin: 0)
+        print("Test command received")
     }
     
     // Send a raw byte command with hex string input
