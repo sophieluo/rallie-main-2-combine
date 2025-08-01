@@ -22,7 +22,7 @@ struct SettingsView: View {
     @State private var showDebugSection = false
     
     // Manual command input states
-    @State private var byteInputs: [String] = Array(repeating: "00", count: 9)
+    @State private var byteInputs: [String] = ["5A", "A5", "83"] + Array(repeating: "00", count: 6)
     @State private var calculatedCRC: String = "00"
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -174,24 +174,18 @@ struct SettingsView: View {
     // Manual Command Input Section
     var manualCommandSection: some View {
         VStack(spacing: 15) {
-            Text("Enter 9 bytes (hex):")
+            Text("Enter 6 bytes (hex):")
                 .font(.subheadline)
             
             // Row 1
             HStack(spacing: 10) {
                 ForEach(0..<3) { index in
-                    TextField("", text: $byteInputs[index])
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    Text(byteInputs[index])
                         .frame(width: 50)
                         .multilineTextAlignment(.center)
-                        .onChange(of: byteInputs[index]) { newValue in
-                            formatHexInput(index: index, newValue: newValue)
-                        }
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                 }
-            }
-            
-            // Row 2
-            HStack(spacing: 10) {
                 ForEach(3..<6) { index in
                     TextField("", text: $byteInputs[index])
                         .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -203,7 +197,7 @@ struct SettingsView: View {
                 }
             }
             
-            // Row 3
+            // Row 2
             HStack(spacing: 10) {
                 ForEach(6..<9) { index in
                     TextField("", text: $byteInputs[index])
@@ -240,14 +234,14 @@ struct SettingsView: View {
                     .background(Color.blue)
                     .cornerRadius(10)
             }
+            .alert(isPresented: $showAlert) {
+                Alert(title: Text("Bluetooth Command"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            }
             .padding(.top, 10)
         }
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
-        .alert(isPresented: $showAlert) {
-            Alert(title: Text("Bluetooth Command"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
-        }
     }
     
     // Format and validate hex input
@@ -293,7 +287,7 @@ struct SettingsView: View {
         }
         
         for (index, byteString) in byteInputs.enumerated() {
-            if byteString.count != 2 || UInt8(byteString, radix: 16) == nil {
+            if index >= 3 && (byteString.count != 2 || UInt8(byteString, radix: 16) == nil) {
                 alertMessage = "Invalid hex value at byte \(index + 1)"
                 showAlert = true
                 return
