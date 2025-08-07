@@ -18,6 +18,13 @@ struct CameraView: View {
                 ZStack {
                     CameraPreviewControllerWrapper(controller: cameraController)
                     
+                    // Joints overlay
+                    JointsView(
+                        joints: cameraController.detectedJoints,
+                        originalSize: cameraController.originalFrameSize,
+                        viewSize: geometry.size
+                    )
+                    
                     // Transparent overlay to capture taps
                     Color.clear
                         .frame(width: geometry.size.width, height: geometry.size.height)
@@ -33,50 +40,73 @@ struct CameraView: View {
                                     }
                                 }
                         )
+                    
+                    // Action prediction overlay
+                    VStack {
+                        Spacer()
+                        
+                        HStack {
+                            Spacer()
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Action: \(cameraController.currentAction)")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Text("Confidence: \(Int(cameraController.actionConfidence * 100))%")
+                                    .font(.subheadline)
+                                    .foregroundColor(.white)
+                            }
+                            .padding()
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(8)
+                            .padding()
+                        }
+                    }
+                    
+                    // Only show user tapped points, not the calculated calibration points
+                    // User tapped points overlay (larger and more visible)
+                    ForEach(0..<cameraController.userTappedPoints.count, id: \.self) { index in
+                        let point = cameraController.userTappedPoints[index]
+                        ZStack {
+                            // Outer glow for better visibility
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 30, height: 30)
+                            
+                            // Main colored circle
+                            Circle()
+                                .fill(getCalibrationPointColor(for: index))
+                                .frame(width: 20, height: 20)
+                            
+                            // Label for the point
+                            Text("\(index + 1)")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                        }
+                        .position(x: point.x, y: point.y)
+                    }
+                    
+                    // Court lines overlay
+                    Path { path in
+                        for line in cameraController.projectedCourtLines {
+                            path.move(to: line.start)
+                            path.addLine(to: line.end)
+                        }
+                    }
+                    .stroke(Color.green, lineWidth: 2)
+                    
+                    // Calibration or overlay UI
+                    if cameraController.isCalibrationMode {
+                        CalibrationPointsView(cameraController: cameraController)
+                    } else {
+                        OverlayShapeView(
+                            isActivated: true, cameraController: cameraController
+                        )
+                    }
                 }
             }
 
-            // Only show user tapped points, not the calculated calibration points
-            // User tapped points overlay (larger and more visible)
-            ForEach(0..<cameraController.userTappedPoints.count, id: \.self) { index in
-                let point = cameraController.userTappedPoints[index]
-                ZStack {
-                    // Outer glow for better visibility
-                    Circle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 30, height: 30)
-                    
-                    // Main colored circle
-                    Circle()
-                        .fill(getCalibrationPointColor(for: index))
-                        .frame(width: 20, height: 20)
-                    
-                    // Label for the point
-                    Text("\(index + 1)")
-                        .font(.caption)
-                        .foregroundColor(.white)
-                }
-                .position(x: point.x, y: point.y)
-            }
-            
-            // Court lines overlay
-            Path { path in
-                for line in cameraController.projectedCourtLines {
-                    path.move(to: line.start)
-                    path.addLine(to: line.end)
-                }
-            }
-            .stroke(Color.green, lineWidth: 2)
-            
-            // Calibration or overlay UI
-            if cameraController.isCalibrationMode {
-                CalibrationPointsView(cameraController: cameraController)
-            } else {
-                OverlayShapeView(
-                    isActivated: true, cameraController: cameraController
-                )
-            }
-            
             // Top UI elements
             VStack {
                 HStack {

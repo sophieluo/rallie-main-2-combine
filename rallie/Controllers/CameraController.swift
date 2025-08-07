@@ -24,15 +24,17 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     // MARK: - Vision
     private(set) var overlayView = BoundingBoxOverlayView()
         
-        private let objectDetector = ObjectDetector()
+    private let objectDetector = ObjectDetector()
+    private let playerDetector = PlayerDetector()
+    private let actionClassifier = ActionClassifier()
         
-         var detectedObjects: [DetectedObject] = [] {
-            didSet {
-                DispatchQueue.main.async {
-//                    self.overlayView.boxes = self.detectedObjects
-                }
+    var detectedObjects: [DetectedObject] = [] {
+        didSet {
+            DispatchQueue.main.async {
+//                self.overlayView.boxes = self.detectedObjects
             }
         }
+    }
 
     // MARK: - Outputs
     @Published var projectedCourtLines: [LineSegment] = []
@@ -41,8 +43,21 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var playerSpeed: Double = 0.0
     @Published var isTappingEnabled = true
     
+    // Action Classifier outputs
+    @Published var currentAction: String = "Unknown"
+    @Published var actionConfidence: Float = 0.0
+    @Published var predictions: [(startFrame: Int, endFrame: Int, label: String, confidence: Float)] = []
+    
+    // Publishers
+    let actionPublisher = PassthroughSubject<(String, Float), Never>()
+    let playerPositionPublisher = PassthroughSubject<CGPoint, Never>()
+    private var cancellables = Set<AnyCancellable>()
+    
     // Kalman filter for smoothing player position
     private var playerPositionFilter: KalmanFilter?
+    
+    // Frame counter for action classification
+    private var frameCounter: Int = 0
     
     // MARK: - Calibration Points
     @Published var calibrationPoints: [CGPoint] = []
@@ -60,7 +75,12 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     
     // UserDefaults key for tracking if calibration has been done before
     internal let hasCalibrationBeenPerformedKey = "hasCalibrationBeenPerformedBefore"
-
+    
+    // MARK: - Published Properties
+    @Published var playerPositions: [CGPoint] = []
+    @Published var detectedJoints: [CGPoint?] = Array(repeating: nil, count: 18)
+    @Published var originalFrameSize: CGSize = .zero
+    
     // MARK: - Setup
     func startSession(in view: UIView, screenSize: CGSize) {
         print("🎥 Starting camera session setup")
@@ -281,8 +301,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         ]
         
         let transformedLines = courtLines.compactMap { line -> LineSegment? in
-            guard let p1 = HomographyHelper.projectsForMap(point: line.start, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4))),
-                  let p2 = HomographyHelper.projectsForMap(point: line.end, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4))) else {
+            guard let p1 = HomographyHelper.projectsForMap(point: line.start, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4)), in: nil, screenSize: nil),
+                  let p2 = HomographyHelper.projectsForMap(point: line.end, using: matrix, trapezoidCorners: Array(calibrationPoints.prefix(4)), in: nil, screenSize: nil) else {
                 return nil
             }
             return LineSegment(start: p1, end: p2)
@@ -312,24 +332,132 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return
         }
         
-        // Process object detection on a background queue
+        // Increment frame counter
+        frameCounter += 1
+        
+        // Create a copy of the frame size to avoid capturing pixelBuffer in closures
+        let frameWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let frameHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let originalSize = CGSize(width: frameWidth, height: frameHeight)
+        
+        // Update original frame size
+        originalFrameSize = originalSize
+        
+        // Process object detection synchronously to avoid capturing pixelBuffer
+        let detectedPlayers = detectPlayersSync(pixelBuffer: pixelBuffer)
+        
+        // Process the results on a background queue (without capturing pixelBuffer)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
-            // Detect objects in the pixel buffer
-            self.objectDetector.detectObjects(in: pixelBuffer) { detected in
-                // Update detected objects
-                self.detectedObjects = detected
+            // Store detected objects
+            self.detectedObjects = detectedPlayers
+            
+            // Process the first detected player (if any)
+            if let playerObject = detectedPlayers.first {
+                // Process pose for the detected player
+                self.processPoseForPlayerSync(pixelBuffer: pixelBuffer, 
+                                             playerBox: playerObject, 
+                                             originalSize: originalSize)
             }
             
-            // Process player position on main queue
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
+            // Process player position on main thread
+            DispatchQueue.main.async {
                 self.processPlayerPosition()
             }
         }
     }
     
+    // Synchronous player detection to avoid capturing pixelBuffer in closures
+    private func detectPlayersSync(pixelBuffer: CVPixelBuffer) -> [DetectedObject] {
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: [DetectedObject] = []
+        
+        objectDetector.detectObjects(in: pixelBuffer) { detectedObjects in
+            result = detectedObjects
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return result
+    }
+    
+    // Synchronous pose processing to avoid capturing pixelBuffer in closures
+    private func processPoseForPlayerSync(pixelBuffer: CVPixelBuffer, playerBox: DetectedObject, originalSize: CGSize) {
+        let semaphore = DispatchSemaphore(value: 0)
+        let currentFrameIndex = self.frameCounter
+        
+        print("👤 Processing pose for player at frame \(currentFrameIndex)")
+        
+        playerDetector.processPixelBuffer(pixelBuffer) { [weak self] observation in
+            guard let self = self else { 
+                semaphore.signal()
+                return 
+            }
+            
+            // If we have a pose observation, process it for action classification
+            if let observation = observation {
+                print("✅ Pose detected for frame \(currentFrameIndex)")
+                
+                // Pass the pose to the action classifier
+                self.actionClassifier.processPose(
+                    observation,
+                    boundingBox: playerBox.rect,
+                    originalSize: originalSize,
+                    frameIndex: currentFrameIndex
+                )
+                
+                // Update UI with latest action and joints
+                DispatchQueue.main.async {
+                    self.currentAction = self.actionClassifier.currentAction
+                    self.actionConfidence = self.actionClassifier.actionConfidence
+                    self.predictions = self.actionClassifier.predictions
+                    self.detectedJoints = self.actionClassifier.lastDetectedJoints
+                    
+                    print("🎾 Updated action: \(self.currentAction) with confidence: \(self.actionConfidence)")
+                    if !self.predictions.isEmpty {
+                        print("📊 Current predictions count: \(self.predictions.count)")
+                    }
+                }
+            } else {
+                print("⚠️ No pose detected for frame \(currentFrameIndex)")
+            }
+            
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+    }
+
+    // Process pose for detected player
+    private func processPoseForPlayer(pixelBuffer: CVPixelBuffer, playerBox: DetectedObject) {
+        // Get the original frame size
+        let frameWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let frameHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let originalSize = CGSize(width: frameWidth, height: frameHeight)
+        
+        // Run pose detection
+        playerDetector.processPixelBuffer(pixelBuffer) { observation in
+            // If we have a pose observation, process it for action classification
+            if let observation = observation {
+                // Pass the pose to the action classifier
+                self.actionClassifier.processPose(
+                    observation,
+                    boundingBox: playerBox.rect,
+                    originalSize: originalSize,
+                    frameIndex: self.frameCounter
+                )
+                
+                // Update UI with latest action
+                DispatchQueue.main.async {
+                    self.currentAction = self.actionClassifier.currentAction
+                    self.actionConfidence = self.actionClassifier.actionConfidence
+                    self.predictions = self.actionClassifier.predictions
+                }
+            }
+        }
+    }
+
     // Process player position on the main thread
     private func processPlayerPosition() {
         // Check if we have a homography matrix
@@ -347,7 +475,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         
         // Check if we have a foot position
         guard let footPos = objectDetector.bottomCenterPointPositionInImage,
-              let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners)) else {
+              let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners), in: nil, screenSize: nil) else {
             // Only print every few seconds to avoid log spam
             if let last = lastFootPositionWarningTime, Date().timeIntervalSince(last) < 2.0 {
                 return
@@ -427,5 +555,43 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
     }
 
-    let playerPositionPublisher = PassthroughSubject<CGPoint, Never>()
+    // MARK: - Initialization
+    override init() {
+        super.init()
+        
+        // Subscribe to action classifier updates
+        actionClassifier.actionPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] (action, confidence) in
+                guard let self = self else { return }
+                self.currentAction = action
+                self.actionConfidence = confidence
+                self.actionPublisher.send((action, confidence))
+            }
+            .store(in: &cancellables)
+    }
+
+    func resetSession() {
+        print("🔄 Resetting camera session")
+        stopSession()
+        
+        // Reset action classifier
+        actionClassifier.reset()
+        frameCounter = 0
+        currentAction = "Unknown"
+        actionConfidence = 0.0
+        
+        // Reset other components
+        playerPositionFilter = nil
+        projectedPlayerPosition = nil
+        playerSpeed = 0.0
+        
+        // Start session again if there's a valid preview layer
+        if let previewView = previewLayer?.superlayer as? UIView,
+           let screenSize = previewLayer?.bounds.size {
+            startSession(in: previewView, screenSize: screenSize)
+        } else {
+            print("⚠️ Cannot restart session: no valid preview layer")
+        }
+    }
 }

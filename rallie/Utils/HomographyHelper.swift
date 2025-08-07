@@ -40,7 +40,7 @@ class HomographyHelper {
     }
 
     /// Project a single screen point using matrix, with correction for out-of-bounds points
-    static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint]) -> CGPoint? {
+    static func projectsForMap(point: CGPoint, using matrix: [NSNumber], trapezoidCorners: [CGPoint], in: CVPixelBuffer? = nil, screenSize: CGSize? = nil) -> CGPoint? {
         // Check if point is within trapezoid but don't return nil if it's not
         let isInsideCourt = isPointInTrapezoid(point, corners: trapezoidCorners)
         

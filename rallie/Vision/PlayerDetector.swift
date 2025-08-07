@@ -14,20 +14,27 @@ class PlayerDetector: ObservableObject {
     @Published var centrePointInPixels: CGPoint? = nil
     
     private let sequenceHandler = VNSequenceRequestHandler()
-    private lazy var request: VNDetectHumanBodyPoseRequest = {
-        let request = VNDetectHumanBodyPoseRequest { [weak self] (request: VNRequest, error: Error?) in
-            guard let self = self,
-                  let observations = request.results as? [VNHumanBodyPoseObservation],
+    
+    func processPixelBuffer(_ pixelBuffer: CVPixelBuffer, completion: @escaping (VNHumanBodyPoseObservation?) -> Void = { _ in }) {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
+        
+        // Get screen size for coordinate conversion
+        let screenSize = UIScreen.main.bounds.size
+        
+        // Create a new request for this specific call that includes the completion handler
+        let poseRequest = VNDetectHumanBodyPoseRequest { (request: VNRequest, error: Error?) in
+            guard let observations = request.results as? [VNHumanBodyPoseObservation],
                   let observation = observations.first else {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
                     self?.footPositionInImage = nil
                     self?.boundingBox = nil
                 }
                 print("👤 No person detected")
+                completion(nil)
                 return
             }
             
-            print("👤123")
+            print("👤 Person detected")
             
             // For back-facing detection, focus on these more reliable points
             let confidenceThreshold: CGFloat = 0.5  // Consider making this adjustable
@@ -43,34 +50,32 @@ class PlayerDetector: ObservableObject {
                                                          recognizedPoints[.leftAnkle]
                     if let footPoint = bestFoot {
                         // Convert Vision coordinates (0-1) to pixel coordinates
-                        let imageWidth = UIScreen.main.bounds.width
-                        let imageHeight = UIScreen.main.bounds.height
-                        let anklePosition = CGPoint(x: footPoint.location.x * imageWidth,
-                                                    y: (1 - footPoint.location.y) * imageHeight)
+                        let anklePosition = CGPoint(x: footPoint.location.x * screenSize.width,
+                                                    y: (1 - footPoint.location.y) * screenSize.height)
                         
                         print("👣 Best foot position - raw: \(footPoint.location), transformed: \(anklePosition), confidence: \(footPoint.confidence)")
                         
-                        DispatchQueue.main.async {
-                            self.footPositionInImage = anklePosition
+                        DispatchQueue.main.async { [weak self] in
+                            self?.footPositionInImage = anklePosition
                         }
                     }
                 } else {
                     print("🦶 No feet detected with sufficient confidence")
-                    DispatchQueue.main.async {
-                        self.footPositionInImage = nil
+                    DispatchQueue.main.async { [weak self] in
+                        self?.footPositionInImage = nil
                     }
                 }
             }
+            
+            // Pass the observation to the completion handler
+            completion(observation)
         }
-        return request
-    }()
-    
-    func processPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
+        
         do {
-            try handler.perform([request])
+            try handler.perform([poseRequest])
         } catch {
             print("❌ Vision error: \(error)")
+            completion(nil)
         }
     }
 }
