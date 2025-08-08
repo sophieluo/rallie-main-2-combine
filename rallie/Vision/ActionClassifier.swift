@@ -98,84 +98,229 @@ class ActionClassifier: ObservableObject {
         
         // Map Vision keypoints to our required 18 keypoints
         var keypoints: [CGPoint?] = Array(repeating: nil, count: 18)
+        var pixelKeypoints: [CGPoint] = Array(repeating: .zero, count: 18)
         
-        // Map Vision keypoints to our format
-        if let nose = recognizedPoints[.nose], nose.confidence > 0.1 {
-            keypoints[0] = CGPoint(x: nose.location.x * originalSize.width, y: nose.location.y * originalSize.height)
+        // Debug: Print all recognized points from Vision
+        print("🔍 All recognized points from Vision:")
+        for (key, point) in recognizedPoints {
+            if point.confidence > 0.1 {
+                print("  \(key): (\(point.location.x), \(point.location.y)), conf: \(point.confidence)")
+            }
         }
         
+        // IMPORTANT: The order of keypoints must match what the model expects
+        // From documentation: "nose, neck, right shoulder, right elbow, right wrist, left shoulder, left elbow, left wrist, 
+        // right hip, right knee, right ankle, left hip, left knee, left ankle, right eye, left eye, right ear, left ear"
+        
+        // Map Vision keypoints to our format - keep normalized coordinates for the model
+        // And create pixel coordinates for visualization
+        mapJoint(recognizedPoints[.nose], index: 0, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        
+        // 1: neck (approximated as midpoint between shoulders if not available)
         if let neck = recognizedPoints[.neck], neck.confidence > 0.1 {
-            keypoints[1] = CGPoint(x: neck.location.x * originalSize.width, y: neck.location.y * originalSize.height)
+            print("🔍 Using direct neck detection: (\(neck.location.x), \(neck.location.y)), confidence: \(neck.confidence)")
+            keypoints[1] = CGPoint(
+                x: (1 - neck.location.y),  // Swap x/y and flip x
+                y: (1 - neck.location.x)   // Swap x/y and flip y
+            )
+            pixelKeypoints[1] = CGPoint(
+                x: (1 - neck.location.y) * originalSize.width,
+                y: (1 - neck.location.x) * originalSize.height
+            )
+            print("🔍 Neck joint (direct) - Model input: (\(keypoints[1]!.x), \(keypoints[1]!.y)), Pixel: (\(pixelKeypoints[1].x), \(pixelKeypoints[1].y))")
+        } else if let leftShoulder = recognizedPoints[.leftShoulder], 
+                  let rightShoulder = recognizedPoints[.rightShoulder],
+                  leftShoulder.confidence > 0.1, rightShoulder.confidence > 0.1 {
+            print("🔍 Using shoulder midpoint for neck: Left (\(leftShoulder.location.x), \(leftShoulder.location.y)), Right (\(rightShoulder.location.x), \(rightShoulder.location.y))")
+            
+            // For midpoint calculation, we need to handle the orientation consistently
+            // We'll swap x/y first, then calculate the midpoint
+            let leftX = leftShoulder.location.y
+            let leftY = leftShoulder.location.x
+            let rightX = rightShoulder.location.y
+            let rightY = rightShoulder.location.x
+            
+            let midX = (leftX + rightX) / 2
+            let midY = (leftY + rightY) / 2
+            
+            print("🔍 Calculated neck midpoint (after swap): (\(midX), \(midY))")
+            
+            // Apply flipping for model input
+            keypoints[1] = CGPoint(
+                x: (1 - midX),  // Flip x
+                y: (1 - midY)   // Flip y
+            )
+            pixelKeypoints[1] = CGPoint(
+                x: (1 - midX) * originalSize.width,
+                y: (1 - midY) * originalSize.height
+            )
+            print("🔍 Neck joint (midpoint) - Model input: (\(keypoints[1]!.x), \(keypoints[1]!.y)), Pixel: (\(pixelKeypoints[1].x), \(pixelKeypoints[1].y))")
+        } else {
+            print("⚠️ Could not determine neck position - no direct detection or valid shoulders")
         }
         
-        // Right arm
-        if let rightShoulder = recognizedPoints[.rightShoulder], rightShoulder.confidence > 0.1 {
-            keypoints[2] = CGPoint(x: rightShoulder.location.x * originalSize.width, y: rightShoulder.location.y * originalSize.height)
+        // Map remaining keypoints
+        mapJoint(recognizedPoints[.rightShoulder], index: 2, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        
+        // Debug: Print detailed comparison of neck and right shoulder positions
+        print("🔎🔎🔎 JOINT_DEBUG: DETAILED JOINT COMPARISON 🔎🔎🔎")
+        if let neck = keypoints[1], let rightShoulder = keypoints[2] {
+            print("🔎🔎🔎 JOINT_DEBUG: Neck (index 1): Model input: (\(neck.x), \(neck.y)), Pixel: (\(pixelKeypoints[1].x), \(pixelKeypoints[1].y))")
+            print("🔎🔎🔎 JOINT_DEBUG: Right Shoulder (index 2): Model input: (\(rightShoulder.x), \(rightShoulder.y)), Pixel: (\(pixelKeypoints[2].x), \(pixelKeypoints[2].y))")
+            print("🔎🔎🔎 JOINT_DEBUG: Distance between neck and right shoulder: Model: \(sqrt(pow(neck.x - rightShoulder.x, 2) + pow(neck.y - rightShoulder.y, 2))), Pixel: \(sqrt(pow(pixelKeypoints[1].x - pixelKeypoints[2].x, 2) + pow(pixelKeypoints[1].y - pixelKeypoints[2].y, 2)))")
         }
         
-        if let rightElbow = recognizedPoints[.rightElbow], rightElbow.confidence > 0.1 {
-            keypoints[3] = CGPoint(x: rightElbow.location.x * originalSize.width, y: rightElbow.location.y * originalSize.height)
+        mapJoint(recognizedPoints[.rightElbow], index: 3, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightWrist], index: 4, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftShoulder], index: 5, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftElbow], index: 6, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftWrist], index: 7, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightHip], index: 8, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightKnee], index: 9, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightAnkle], index: 10, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftHip], index: 11, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftKnee], index: 12, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftAnkle], index: 13, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightEye], index: 14, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftEye], index: 15, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.rightEar], index: 16, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        mapJoint(recognizedPoints[.leftEar], index: 17, keypoints: &keypoints, pixelKeypoints: &pixelKeypoints, originalSize: originalSize)
+        
+        // Print debug info about detected joints
+        let validJointCount = keypoints.compactMap { $0 }.count
+        print("🦴 Detected \(validJointCount)/18 valid joints for visualization")
+        
+        // Update the last detected joints for visualization - ensure on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.lastDetectedJoints = pixelKeypoints
+            print("🔄 Updated joints for visualization: \(validJointCount) valid joints")
+            
+            // Simple debug print for each joint position
+            print("SIMPLE_DEBUG: Joint positions:")
+            for (i, point) in pixelKeypoints.enumerated() {
+                if point != .zero {
+                    print("SIMPLE_DEBUG: Joint \(i): (\(Int(point.x)), \(Int(point.y)))")
+                    
+                    // Check if this joint is far from the center (potential stray)
+                    let centerX = originalSize.width / 2
+                    let centerY = originalSize.height / 2
+                    let distanceFromCenter = sqrt(pow(point.x - centerX, 2) + pow(point.y - centerY, 2))
+                    
+                    if distanceFromCenter > max(originalSize.width, originalSize.height) * 0.4 {
+                        print("SIMPLE_DEBUG: ⚠️ POTENTIAL STRAY JOINT: Joint \(i) is far from center: \(Int(distanceFromCenter)) pixels")
+                    }
+                }
+            }
+            
+            // Check specific connections
+            if pixelKeypoints[1] != .zero && pixelKeypoints[2] != .zero {
+                let distance = sqrt(pow(pixelKeypoints[2].x - pixelKeypoints[1].x, 2) + 
+                                   pow(pixelKeypoints[2].y - pixelKeypoints[1].y, 2))
+                print("SIMPLE_DEBUG: Neck to Right Shoulder distance: \(Int(distance)) pixels")
+                if distance > 200 {
+                    print("SIMPLE_DEBUG: ⚠️ UNUSUALLY LONG CONNECTION: Neck to Right Shoulder: \(Int(distance)) pixels")
+                }
+            }
         }
         
-        if let rightWrist = recognizedPoints[.rightWrist], rightWrist.confidence > 0.1 {
-            keypoints[4] = CGPoint(x: rightWrist.location.x * originalSize.width, y: rightWrist.location.y * originalSize.height)
+        // Create the normalized keypoints array in the format expected by the model
+        var normalizedKeypoints: [[Float]] = Array(repeating: Array(repeating: 0.0, count: 18), count: 3)
+        
+        // Fill the array with normalized coordinates
+        for i in 0..<keypoints.count {
+            if let point = keypoints[i] {
+                // Only include valid points in the model input
+                // Check if this is a valid point (not an outlier)
+                let isValidPoint = point != .zero && 
+                                  point.x >= 0 && point.x <= 1 && 
+                                  point.y >= 0 && point.y <= 1
+                
+                if isValidPoint {
+                    normalizedKeypoints[0][i] = Float(point.x)  // x coordinate
+                    normalizedKeypoints[1][i] = Float(point.y)  // y coordinate
+                    normalizedKeypoints[2][i] = 1.0  // confidence for valid points
+                } else {
+                    // For invalid points, set confidence to 0
+                    normalizedKeypoints[0][i] = 0.0
+                    normalizedKeypoints[1][i] = 0.0
+                    normalizedKeypoints[2][i] = 0.0
+                    print("⚠️ Excluding invalid point from model input: joint \(i)")
+                }
+            } else {
+                // For nil points (filtered out earlier), set confidence to 0
+                normalizedKeypoints[0][i] = 0.0
+                normalizedKeypoints[1][i] = 0.0
+                normalizedKeypoints[2][i] = 0.0
+            }
         }
         
-        // Left arm
-        if let leftShoulder = recognizedPoints[.leftShoulder], leftShoulder.confidence > 0.1 {
-            keypoints[5] = CGPoint(x: leftShoulder.location.x * originalSize.width, y: leftShoulder.location.y * originalSize.height)
+        // Special handling for right shoulder (index 2) which is prone to mapping errors
+        // If we have a neck point (index 1), check if right shoulder is too far
+        if let neck = keypoints[1], let rightShoulder = keypoints[2] {
+            let distance = sqrt(pow(neck.x - rightShoulder.x, 2) + pow(neck.y - rightShoulder.y, 2))
+            
+            // If distance is too large, this is likely a mapping error
+            if distance > 0.3 {  // Threshold for normalized coordinates (0-1)
+                print("⚠️ Right shoulder too far from neck in model input: \(distance)")
+                // Zero out the right shoulder in the model input
+                normalizedKeypoints[0][2] = 0.0
+                normalizedKeypoints[1][2] = 0.0
+                normalizedKeypoints[2][2] = 0.0
+            }
         }
-        
-        if let leftElbow = recognizedPoints[.leftElbow], leftElbow.confidence > 0.1 {
-            keypoints[6] = CGPoint(x: leftElbow.location.x * originalSize.width, y: leftElbow.location.y * originalSize.height)
-        }
-        
-        if let leftWrist = recognizedPoints[.leftWrist], leftWrist.confidence > 0.1 {
-            keypoints[7] = CGPoint(x: leftWrist.location.x * originalSize.width, y: leftWrist.location.y * originalSize.height)
-        }
-        
-        // Update the last detected joints for visualization
-        lastDetectedJoints = keypoints
-        
-        // Convert optional points to array of points, using (0,0) for missing points
-        let points = keypoints.map { point -> CGPoint in
-            return point ?? CGPoint.zero
-        }
-        
-        // Normalize keypoints to 1080x1920 canvas
-        let normalizedKeypoints = normalizeKeypoints(points, boundingBox: boundingBox)
         
         // Add to pose buffer
         addToPoseBuffer(normalizedKeypoints, frameIndex: frameIndex)
     }
     
-    // MARK: - Keypoint Normalization
-    private func normalizeKeypoints(_ keypoints: [CGPoint], boundingBox: CGRect) -> [[Float]] {
-        // Create result array: [3][18] - [x/y/conf][joint]
-        var result = Array(repeating: Array(repeating: Float(0), count: 18), count: 3)
+    // Helper method to map keypoints
+    private func mapJoint(_ point: VNRecognizedPoint?, index: Int, keypoints: inout [CGPoint?], pixelKeypoints: inout [CGPoint], originalSize: CGSize) {
+        // For right shoulder (index 2), increase confidence threshold to 0.5
+        let confidenceThreshold: CGFloat = index == 2 ? 0.5 : 
+                                          (index >= 9 && index <= 14) ? 0.3 : 0.1
         
-        // Reference canvas size for normalization (1080x1920)
-        let referenceWidth: CGFloat = 1080
-        let referenceHeight: CGFloat = 1920
-        
-        // For each keypoint
-        for i in 0..<min(18, keypoints.count) {
-            let point = keypoints[i]
+        if let point = point, CGFloat(point.confidence) > confidenceThreshold {
+            // Map normalized coordinates for model input (swap and flip due to camera orientation)
+            let mappedPoint = CGPoint(
+                x: (1 - point.location.y),
+                y: (1 - point.location.x)
+            )
             
-            // Skip points at (0,0) - they're missing
-            if point.x == 0 && point.y == 0 {
-                result[0][i] = 0
-                result[1][i] = 0
-                result[2][i] = 0
+            // Validate coordinates are within normalized range [0,1]
+            if mappedPoint.x >= 0 && mappedPoint.x <= 1 && mappedPoint.y >= 0 && mappedPoint.y <= 1 {
+                // Special handling for right shoulder (index 2)
+                if index == 2 {
+                    // Check if right shoulder is too far from neck (if neck exists)
+                    if let neckPoint = keypoints[1] {
+                        let distance = sqrt(pow(mappedPoint.x - neckPoint.x, 2) + pow(mappedPoint.y - neckPoint.y, 2))
+                        print("🔍 Right shoulder to neck distance (normalized): \(distance)")
+                        
+                        // If distance is too large, discard this point
+                        if distance > 0.3 {
+                            print("⚠️ Right shoulder is too far from neck (\(distance)), discarding")
+                            return
+                        }
+                    }
+                }
+                
+                keypoints[index] = mappedPoint
+                
+                // Map to pixel coordinates for visualization
+                let pixelX = mappedPoint.x * originalSize.width
+                let pixelY = mappedPoint.y * originalSize.height
+                pixelKeypoints[index] = CGPoint(x: pixelX, y: pixelY)
+                
+                // Print debug info for key joints
+                if index == 1 || index == 2 || index == 5 {
+                    let jointName = index == 1 ? "Neck" : (index == 2 ? "Right Shoulder" : "Left Shoulder")
+                    print("🔍 \(jointName) mapped to: Model(\(mappedPoint.x), \(mappedPoint.y)), Pixel(\(pixelX), \(pixelY))")
+                }
             } else {
-                // Normalize to reference canvas (1080x1920)
-                result[0][i] = Float(point.x / referenceWidth)
-                result[1][i] = Float(point.y / referenceHeight)
-                result[2][i] = 1.0 // Confidence is 1.0 for detected points
+                print("⚠️ Joint \(index) mapped outside normalized range: (\(mappedPoint.x), \(mappedPoint.y))")
             }
+        } else if let point = point {
+            print("ℹ️ Joint \(index) confidence too low: \(point.confidence) < \(confidenceThreshold)")
         }
-        
-        return result
     }
     
     // MARK: - Pose Buffer Management
@@ -192,7 +337,7 @@ class ActionClassifier: ObservableObject {
         
         // If we have enough frames, run the classifier
         if poseFrames.count >= requiredFrameCount {
-            // Run classifier on the last 30 frames
+            // Run classifier with a sliding window
             let startIdx = max(0, poseFrames.count - requiredFrameCount)
             let endIdx = poseFrames.count
             let frameWindow = Array(poseFrames[startIdx..<endIdx])
@@ -228,13 +373,12 @@ class ActionClassifier: ObservableObject {
             
             // Fill the MLMultiArray with pose data
             for frameIdx in 0..<min(poseFrames.count, 30) {
+                let frameData = poseFrames[frameIdx]
                 for coordIdx in 0..<3 { // x, y, confidence
                     for jointIdx in 0..<18 {
                         // Calculate the index in the multi-array
-                        let index = [NSNumber(value: frameIdx), NSNumber(value: coordIdx), NSNumber(value: jointIdx)]
-                        let value = poseFrames[frameIdx][coordIdx][jointIdx]
-                        // Use subscript syntax instead of setValue
-                        multiArray[index] = NSNumber(value: value)
+                        let index = [frameIdx, coordIdx, jointIdx] as [NSNumber]
+                        multiArray[index] = NSNumber(value: frameData[coordIdx][jointIdx])
                     }
                 }
             }
@@ -260,22 +404,33 @@ class ActionClassifier: ObservableObject {
             
             var confidence: Float = 0.0
             if let probsOutput = outputFeatures.featureValue(for: "labelProbabilities")?.dictionaryValue as? [String: NSNumber] {
+                // Print all probabilities for debugging
+                print("📊 All class probabilities:")
+                for (label, prob) in probsOutput {
+                    print("\(label): \(prob.floatValue)")
+                }
+                
                 confidence = probsOutput[labelOutput]?.floatValue ?? 0.0
-                print("📊 Confidence: \(confidence)")
+                print("📊 Confidence for \(labelOutput): \(confidence)")
             }
             
-            // Store prediction
-            let prediction = (startFrame: startFrame, endFrame: endFrame, label: labelOutput, confidence: confidence)
-            predictions.append(prediction)
-            
-            // Update UI
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.currentAction = labelOutput
-                self.actionConfidence = confidence
+            // Only update if confidence is above a threshold
+            if confidence > 0.6 {
+                // Store prediction
+                let prediction = (startFrame: startFrame, endFrame: endFrame, label: labelOutput, confidence: confidence)
+                predictions.append(prediction)
                 
-                // Notify observers
-                self.objectWillChange.send()
+                // Update UI on main thread
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.currentAction = labelOutput
+                    self.actionConfidence = confidence
+                    
+                    // Notify observers
+                    self.objectWillChange.send()
+                }
+            } else {
+                print("⚠️ Prediction confidence too low (\(confidence)), not updating UI")
             }
         } catch {
             print("❌ Error running action classifier: \(error.localizedDescription)")
@@ -290,5 +445,18 @@ class ActionClassifier: ObservableObject {
         actionConfidence = 0.0
         isCollectingPoses = false
         frameCounter = 0
+        
+        // Update UI on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.objectWillChange.send()
+        }
+    }
+    
+    // MARK: - Map Vision Points to Pixels
+    private func mapVisionPointsToPixels(_ recognizedPoints: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint], originalSize: CGSize) -> [CGPoint?] {
+        // This method is no longer used - we're using the pixelKeypoints array from processPose instead
+        // Keeping this stub for now in case it's called elsewhere, but it should be removed in the future
+        print("⚠️ Warning: mapVisionPointsToPixels is deprecated and should not be called")
+        return Array(repeating: nil, count: 18)
     }
 }

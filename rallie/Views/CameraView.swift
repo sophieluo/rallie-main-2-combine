@@ -24,22 +24,7 @@ struct CameraView: View {
                         originalSize: cameraController.originalFrameSize,
                         viewSize: geometry.size
                     )
-                    
-                    // Transparent overlay to capture taps
-                    Color.clear
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { value in
-                                    let tapPoint = value.location
-                                    
-                                    if cameraController.isCalibrationMode {
-                                        print("📍 Tap location: \(tapPoint)")
-                                        cameraController.handleCalibrationTap(at: tapPoint)
-                                    }
-                                }
-                        )
+                    .allowsHitTesting(false) // Allow taps to pass through
                     
                     // Action prediction overlay
                     VStack {
@@ -61,8 +46,25 @@ struct CameraView: View {
                             .background(Color.black.opacity(0.6))
                             .cornerRadius(8)
                             .padding()
+                            .allowsHitTesting(false) // Allow taps to pass through
                         }
                     }
+                    
+                    // Transparent overlay to capture taps
+                    Color.clear
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { value in
+                                    let tapPoint = value.location
+                                    
+                                    if cameraController.isCalibrationMode {
+                                        print("📍 Tap location: \(tapPoint)")
+                                        cameraController.handleCalibrationTap(at: tapPoint)
+                                    }
+                                }
+                        )
                     
                     // Only show user tapped points, not the calculated calibration points
                     // User tapped points overlay (larger and more visible)

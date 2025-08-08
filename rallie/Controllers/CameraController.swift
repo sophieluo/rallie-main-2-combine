@@ -31,7 +31,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     var detectedObjects: [DetectedObject] = [] {
         didSet {
             DispatchQueue.main.async {
-//                self.overlayView.boxes = self.detectedObjects
+                self.overlayView.boxes = self.detectedObjects
             }
         }
     }
@@ -80,7 +80,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var playerPositions: [CGPoint] = []
     @Published var detectedJoints: [CGPoint?] = Array(repeating: nil, count: 18)
     @Published var originalFrameSize: CGSize = .zero
-    
+
     // MARK: - Setup
     func startSession(in view: UIView, screenSize: CGSize) {
         print("🎥 Starting camera session setup")
@@ -340,8 +340,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         let frameHeight = CVPixelBufferGetHeight(pixelBuffer)
         let originalSize = CGSize(width: frameWidth, height: frameHeight)
         
-        // Update original frame size
-        originalFrameSize = originalSize
+        // Update original frame size on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.originalFrameSize = originalSize
+        }
         
         // Process object detection synchronously to avoid capturing pixelBuffer
         let detectedPlayers = detectPlayersSync(pixelBuffer: pixelBuffer)
@@ -407,20 +409,28 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     frameIndex: currentFrameIndex
                 )
                 
-                // Update UI with latest action and joints
+                // Update UI with latest action and predictions on main thread
                 DispatchQueue.main.async {
                     self.currentAction = self.actionClassifier.currentAction
                     self.actionConfidence = self.actionClassifier.actionConfidence
                     self.predictions = self.actionClassifier.predictions
                     self.detectedJoints = self.actionClassifier.lastDetectedJoints
+                    self.originalFrameSize = originalSize
                     
                     print("🎾 Updated action: \(self.currentAction) with confidence: \(self.actionConfidence)")
+                    print("👁️ Updated joints: \(self.detectedJoints.compactMap { $0 }.count) valid joints")
                     if !self.predictions.isEmpty {
                         print("📊 Current predictions count: \(self.predictions.count)")
                     }
                 }
             } else {
                 print("⚠️ No pose detected for frame \(currentFrameIndex)")
+                
+                // Even if no pose is detected, update UI to show "Unknown" action
+                DispatchQueue.main.async {
+                    self.currentAction = "Unknown"
+                    self.actionConfidence = 0.0
+                }
             }
             
             semaphore.signal()
@@ -487,7 +497,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         
         // Update player position
         updatePlayerPosition(projected)
-        print("👟 Detected player position")
+        //print("👟 Detected player position")
     }
 
     func updatePreviewFrame(to bounds: CGRect) {
@@ -536,22 +546,22 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 print("📊 Published position: (\(formattedX)m, \(formattedY)m) - \(courtPercentX)% across, \(courtPercentY)% down court")
                 
                 // Log velocity if available
-                if let filter = self.playerPositionFilter {
-                    let velocity = filter.currentVelocity
-                    let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
-                    let formattedSpeed = String(format: "%.2f", speed)
-                    self.playerSpeed = speed
-                    print("🏃 Player speed: \(formattedSpeed) m/s")
-                }
+//                if let filter = self.playerPositionFilter {
+//                    let velocity = filter.currentVelocity
+//                    let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
+//                    let formattedSpeed = String(format: "%.2f", speed)
+//                    self.playerSpeed = speed
+//                    //print("🏃 Player speed: \(formattedSpeed) m/s")
+//                }
             }
             
             // Log the difference between raw and smoothed positions (only if significant)
             let dx = smoothedPosition.x - point.x
             let dy = smoothedPosition.y - point.y
             let distance = sqrt(dx*dx + dy*dy)
-            if distance > 0.1 { // Only log if difference is significant
-                print("🧮 Kalman smoothing: diff=\(String(format: "%.2f", distance))m")
-            }
+//            if distance > 0.1 { // Only log if difference is significant
+//                print("🧮 Kalman smoothing: diff=\(String(format: "%.2f", distance))m")
+//            }
         }
     }
 

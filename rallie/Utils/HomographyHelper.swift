@@ -44,9 +44,9 @@ class HomographyHelper {
         // Check if point is within trapezoid but don't return nil if it's not
         let isInsideCourt = isPointInTrapezoid(point, corners: trapezoidCorners)
         
-        if !isInsideCourt {
-            print("⚠️ Point outside trapezoid: \(point) - attempting projection anyway")
-        }
+        // if !isInsideCourt {
+        //     print("⚠️ Point outside trapezoid: \(point) - attempting projection anyway")
+        // }
         
         // Debug: Print the homography matrix
         // print("🔍 Using homography matrix:")
@@ -55,10 +55,10 @@ class HomographyHelper {
         // }
         
         // Project the raw point coordinates regardless of position
-        guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
-            print("❌ Point projection failed for point: \(point)")
-            return nil
-        }
+         guard let projected = OpenCVWrapper.projectPoint(point, usingMatrix: matrix) else {
+          //   print("❌ Point projection failed for point: \(point)")
+             return nil
+         }
         
         // Get the raw projected point
         let rawProjected = projected as! CGPoint
@@ -72,15 +72,12 @@ class HomographyHelper {
         var correctedX = rawProjected.x
         var correctedY = rawProjected.y
         
-        // No longer need to invert Y-axis since our coordinate system is now consistent
-        // print("🔄 Using raw Y coordinate: \(correctedY)")
-        
         // X-coordinate correction (keep within reasonable bounds)
         if correctedX < -1.0 || correctedX > courtWidth + 1.0 {
             // Clamp to within 1 meter of court boundaries
             let originalX = correctedX
             correctedX = max(-1.0, min(correctedX, courtWidth + 1.0))
-            print("⚠️ X coordinate clamped: \(originalX) → \(correctedX)")
+            //print("⚠️ X coordinate clamped: \(originalX) → \(correctedX)")
         }
         
         // Y-coordinate correction (more complex due to common projection issues)
