@@ -29,6 +29,12 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     // Target device name - set to "ai-thinker" based on the screenshot
     private let targetDeviceName = "ai-thinker"
     
+    // ACK handling properties
+    private var waitingForAck = false
+    private var commandCompletionHandler: ((Bool) -> Void)? = nil
+    private var commandTimeoutTimer: Timer? = nil
+    private let commandTimeout: TimeInterval = 2.0 // 2 seconds timeout for ACK
+
     override init() {
         super.init()
         
@@ -196,6 +202,9 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil else {
             print("❌ Error receiving data: \(error!.localizedDescription)")
+            if waitingForAck {
+                handleAckTimeout()
+            }
             return
         }
         
@@ -229,7 +238,10 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             // Use the low byte of the CRC-16 result
             let calculatedCRC = UInt8(crc & 0xFF)
             
-            if calculatedCRC == receivedCRC {
+            let isValid = calculatedCRC == receivedCRC
+            let isSuccess = isValid && (responseCode == 1 || responseCode == 2)
+            
+            if isValid {
                 switch responseCode {
                 case 0:
                     print("⚠️ Command rejected by device")
@@ -243,6 +255,11 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             } else {
                 print("❌ CRC error in device response: expected \(String(format: "0x%02X", calculatedCRC)), got \(String(format: "0x%02X", receivedCRC))")
             }
+            
+            // If we were waiting for an ACK, handle it
+            if waitingForAck {
+                handleAckReceived(success: isSuccess)
+            }
         } else if let response = String(data: data, encoding: .utf8) {
             print("📥 Received text: \(response)")
         } else {
@@ -250,15 +267,94 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         }
     }
     
+    // Handle ACK received
+    private func handleAckReceived(success: Bool) {
+        // Cancel timeout timer
+        commandTimeoutTimer?.invalidate()
+        commandTimeoutTimer = nil
+        
+        // Reset waiting state
+        waitingForAck = false
+        
+        // Call completion handler if one exists
+        if let completion = commandCompletionHandler {
+            commandCompletionHandler = nil
+            completion(success)
+        }
+    }
+    
+    // Handle ACK timeout
+    private func handleAckTimeout() {
+        print("⚠️ Command ACK timeout - no response received")
+        
+        // Reset waiting state
+        waitingForAck = false
+        commandTimeoutTimer = nil
+        
+        // Call completion handler with failure
+        if let completion = commandCompletionHandler {
+            commandCompletionHandler = nil
+            completion(false)
+        }
+    }
+    
+    // Send a binary command directly
+    func sendBinaryCommand(_ data: Data, completion: ((Bool) -> Void)? = nil) {
+        guard let peripheral = targetPeripheral,
+              let characteristic = commandCharacteristic else {
+            print("⚠️ Cannot send binary command – not connected")
+            print("⚠️ DEBUG: Connection details - peripheral: \(targetPeripheral?.name ?? "nil"), characteristic: \(commandCharacteristic?.uuid.uuidString ?? "nil")")
+            completion?(false)
+            return
+        }
+        
+        // If we're already waiting for an ACK, don't send another command
+        if waitingForAck {
+            print("⚠️ Cannot send command - still waiting for previous ACK")
+            completion?(false)
+            return
+        }
+        
+        // Print the command being sent
+        print("📤 Sending command: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        
+        // If command follows the 10-byte protocol, print a detailed breakdown
+        if data.count == 10 && data[0] == 0x5A && data[1] == 0xA5 && data[2] == 0x83 {
+            print("📤 Command details: [Header: 0x5A 0xA5, Source: 0x83, " +
+                  "UpperWheel: \(data[3])%, LowerWheel: \(data[4])%, " +
+                  "Pitch: \(data[5])°, Yaw: \(data[6])°, " +
+                  "Feed: \(data[7])%, Control: \(data[8] == 1 ? "Start" : "Stop"), " +
+                  "CRC: \(String(format: "0x%02X", data[9]))]")
+        }
+        
+        print("📤 DEBUG: About to write value to characteristic \(characteristic.uuid.uuidString)")
+        
+        // Set up ACK waiting if completion handler is provided
+        if completion != nil {
+            waitingForAck = true
+            commandCompletionHandler = completion
+            
+            // Set up timeout timer
+            commandTimeoutTimer = Timer.scheduledTimer(withTimeInterval: commandTimeout, repeats: false) { [weak self] _ in
+                self?.handleAckTimeout()
+            }
+        }
+        
+        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+        print("📤 DEBUG: Write request sent to peripheral")
+    }
+    
     // Send position command for player tracking
-    func sendPositionCommand(x: Double, y: Double, speed: Double, spin: Double) {
+    func sendPositionCommand(x: Double, y: Double, speed: Double, spin: Double, completion: ((Bool) -> Void)? = nil) {
         if !isConnected || commandCharacteristic == nil {
             print("❌ ERROR: Cannot send position command - peripheral not connected")
             printConnectionStatus()
+            completion?(false)
             return
         }
         
         print("📤 sendPositionCommand called with x=\(x), y=\(y), speed=\(speed), spin=\(spin)")
+        print("📤 DEBUG: Connection state - isConnected: \(isConnected), commandCharacteristic: \(commandCharacteristic != nil ? "available" : "nil")")
         
         // Convert normalized coordinates (0.0-1.0) to angles
         // Map x (0.0-1.0) to Yaw angle (0-90)
@@ -269,7 +365,8 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         let pitchAngle = UInt8(min(90, max(0, Int((1-y) * 90))))
         
         // Convert speed to wheel speeds (0-100)
-        let wheelSpeed = UInt8(min(100, max(0, Int(speed * 2.5)))) // Convert mph to percentage
+        // Linear scaling: ballSpeed = 0 → wheelSpeed = 0%, ballSpeed = 80 → wheelSpeed = 100%
+        let wheelSpeed = UInt8(min(100, max(0, Int((speed / 80.0) * 100.0))))
         
         // Convert spin (-1.0 to 1.0) to differential wheel speeds
         // Positive spin (topspin) = upper wheel faster
@@ -318,7 +415,8 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         // Send the binary command
         let data = Data(command)
-        sendBinaryCommand(data)
+        print("📤 DEBUG: About to call sendBinaryCommand with data: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        sendBinaryCommand(data, completion: completion)
         
         // Log the command details
         print("📤 Sent binary command: \(command.map { String(format: "%02X", $0) }.joined(separator: " "))")
@@ -326,64 +424,8 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         print("   Pitch: \(pitchAngle)°, Yaw: \(yawAngle)°, Feed: 50%, Control: 1")
     }
     
-    // Send a binary command directly
-    func sendBinaryCommand(_ data: Data) {
-        guard let peripheral = targetPeripheral,
-              let characteristic = commandCharacteristic else {
-            print("⚠️ Cannot send binary command – not connected")
-            return
-        }
-        
-        // Print the command being sent
-        print("📤 Sending command: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        
-        // If command follows the 10-byte protocol, print a detailed breakdown
-        if data.count == 10 && data[0] == 0x5A && data[1] == 0xA5 && data[2] == 0x83 {
-            print("📤 Command details: [Header: 0x5A 0xA5, Source: 0x83, " +
-                  "UpperWheel: \(data[3])%, LowerWheel: \(data[4])%, " +
-                  "Pitch: \(data[5])°, Yaw: \(data[6])°, " +
-                  "Feed: \(data[7])%, Control: \(data[8] == 1 ? "Start" : "Stop"), " +
-                  "CRC: \(String(format: "0x%02X", data[9]))]")
-        }
-        
-        peripheral.writeValue(data, for: characteristic, type: .withResponse)
-    }
-    
-    // Legacy method for compatibility with AT commands
-    func sendATCommand(_ command: String) {
-        print("⚠️ AT commands are deprecated. Using binary protocol instead.")
-        
-        // Extract parameters from AT command if possible
-        if command.hasPrefix("AT+SHOOT=") || command.hasPrefix("AT+DATA=") {
-            let paramsString = command.components(separatedBy: "=").last ?? ""
-            let params = paramsString.components(separatedBy: ",")
-            
-            if params.count >= 3 {
-                // Try to extract x, y, speed from the AT command
-                if let x = Double(params[0]),
-                   let y = Double(params[1]),
-                   let speed = Double(params[2]) {
-                    
-                    // Default spin to 0 if not provided
-                    let spin = params.count > 3 ? (Double(params[3]) ?? 0) : 0
-                    
-                    // Convert to binary protocol
-                    print("AT command received: \(command)")
-                    return
-                }
-            }
-        }
-        
-        print("AT command received: \(command)")
-    }
-    
-    // Send a test command to the center of the court
-    func sendTestCommand() {
-        print("Test command received")
-    }
-    
     // Send a raw byte command with hex string input
-    func sendRawByteCommand(_ hexString: String) {
+    func sendRawByteCommand(_ hexString: String, completion: ((Bool) -> Void)? = nil) {
         // Convert hex string to data
         let hexString = hexString.replacingOccurrences(of: " ", with: "")
         var data = Data()
@@ -397,6 +439,7 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
                 data.append(byte)
             } else {
                 print("⚠️ Invalid hex character in command: \(byteString)")
+                completion?(false)
                 return
             }
             
@@ -410,11 +453,12 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         // Ensure we have a valid command
         if data.count == 0 {
             print("⚠️ Empty command")
+            completion?(false)
             return
         }
         
         // Send the binary command
-        sendBinaryCommand(data)
+        sendBinaryCommand(data, completion: completion)
     }
     
     // Start scanning for devices
@@ -454,16 +498,50 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     
     // Print connection status for debugging
     func printConnectionStatus() {
-        print("🔍 --- BLUETOOTH CONNECTION STATUS ---")
+        print("📱 Bluetooth Connection Status:")
         print("   Connected: \(isConnected)")
-        print("   Target peripheral: \(targetPeripheral?.name ?? "None")")
-        print("   Command characteristic: \(commandCharacteristic != nil ? "Found" : "Not found")")
-        print("   Notify characteristic: \(notifyCharacteristic != nil ? "Found" : "Not found")")
-        print("🔍 ---------------------------------")
+        print("   Connecting: \(isConnecting)")
+        print("   Status: \(connectionStatus)")
+        print("   Target Peripheral: \(targetPeripheral?.name ?? "None")")
+        print("   Command Characteristic: \(commandCharacteristic != nil ? "Available" : "Not available")")
+        print("   Notify Characteristic: \(notifyCharacteristic != nil ? "Available" : "Not available")")
     }
     
     // Legacy method for compatibility
     func sendCommand(_ command: String) {
         sendATCommand(command)
+    }
+    
+    // Legacy method for compatibility with AT commands
+    func sendATCommand(_ command: String) {
+        print("⚠️ AT commands are deprecated. Using binary protocol instead.")
+        
+        // Extract parameters from AT command if possible
+        if command.hasPrefix("AT+SHOOT=") || command.hasPrefix("AT+DATA=") {
+            let paramsString = command.components(separatedBy: "=").last ?? ""
+            let params = paramsString.components(separatedBy: ",")
+            
+            if params.count >= 3 {
+                // Try to extract x, y, speed from the AT command
+                if let x = Double(params[0]),
+                   let y = Double(params[1]),
+                   let speed = Double(params[2]) {
+                    
+                    // Default spin to 0 if not provided
+                    let spin = params.count > 3 ? (Double(params[3]) ?? 0) : 0
+                    
+                    // Convert to binary protocol
+                    print("AT command received: \(command)")
+                    return
+                }
+            }
+        }
+        
+        print("AT command received: \(command)")
+    }
+    
+    // Send a test command to the center of the court
+    func sendTestCommand() {
+        print("Test command received")
     }
 }

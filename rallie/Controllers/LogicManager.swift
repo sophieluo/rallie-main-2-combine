@@ -52,6 +52,9 @@ class LogicManager: ObservableObject {
         return min(launchInterval * 0.3, 1.0)
     }
     
+    // Flag to track if a command is in progress (waiting for ACK)
+    private var commandInProgress = false
+    
     init(playerPositionPublisher: AnyPublisher<CGPoint?, Never>, bluetoothManager: BluetoothManager) {
         self.bluetoothManager = bluetoothManager
         
@@ -66,6 +69,7 @@ class LogicManager: ObservableObject {
                 
                 // Debug logging to check conditions
                 print("🔍 Position received: \(position), controlMode: \(self.controlMode), ballActive: \(self.ballActive)")
+                print("🔍 DEBUG: Player position buffer size: \(self.timedPositionBuffer.count), last command sent: \(Date().timeIntervalSince(self.lastCommandSent))s ago")
                 
                 // In interactive mode, we process positions as they come in
                 if self.controlMode == .interactive && self.ballActive {
@@ -73,7 +77,7 @@ class LogicManager: ObservableObject {
                     self.attemptToSendSmoothedCommand()
                 } else {
                     if self.controlMode != .interactive {
-                        print("❌ Not sending command: controlMode is not interactive")
+                        print("❌ Not sending command: controlMode is not interactive (\(self.controlMode))")
                     }
                     if !self.ballActive {
                         print("❌ Not sending command: ball machine is not active")
@@ -168,8 +172,16 @@ class LogicManager: ObservableObject {
             return
         }
         
+        // Don't send a new command if we're still waiting for ACK from the previous one
+        guard !commandInProgress else {
+            print("⏱️ Command skipped: Previous command still in progress (waiting for ACK)")
+            return
+        }
+        
         // Keep only data from the last 3 seconds
+        let oldCount = timedPositionBuffer.count
         timedPositionBuffer = timedPositionBuffer.filter { now.timeIntervalSince($0.timestamp) <= 3.0 }
+        print("🧹 DEBUG: Cleaned position buffer: removed \(oldCount - timedPositionBuffer.count) old positions")
         
         // Extract only positions from the recent window for averaging
         let recent = timedPositionBuffer
@@ -220,10 +232,29 @@ class LogicManager: ObservableObject {
         
         // Always send position command with the player's actual position, regardless of zone
         print("🚀 ATTEMPTING TO SEND COMMAND: x=\(x), y=\(y), speed=\(ballSpeed), spin=\(spinValue)")
-        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue))
-        print("✅ Command sent to BluetoothManager")
+        print("🚀 DEBUG: Raw values for sendPositionCommand - x: \(Double(x)), y: \(Double(y)), speed: \(Double(ballSpeed)), spin: \(Double(spinValue))")
+        print("🚀 CRITICAL DEBUG: ballSpeed type: \(type(of: ballSpeed)), value: \(ballSpeed), converted to Double: \(Double(ballSpeed))")
         
-        // Update last sent timestamp
+        // Set command in progress flag
+        commandInProgress = true
+        
+        // Update last command sent timestamp
         lastCommandSent = now
+        
+        // Send command with completion handler for ACK
+        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue)) { [weak self] success in
+            guard let self = self else { return }
+            
+            // Command is no longer in progress
+            self.commandInProgress = false
+            
+            if success {
+                print("✅ Command ACK received - command executed successfully")
+            } else {
+                print("⚠️ Command failed or timed out")
+            }
+        }
+        
+        print("✅ Command sent to BluetoothManager")
     }
 }
