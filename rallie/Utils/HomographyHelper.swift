@@ -97,7 +97,7 @@ class HomographyHelper {
         
         let correctedPoint = CGPoint(x: correctedX, y: correctedY)
         
-        print("📍 Projected point \(point) to \(rawProjected) - corrected to \(correctedPoint) - inside court: \(isInsideCourt)")
+        //print("📍 Projected point \(point) to \(rawProjected) - corrected to \(correctedPoint) - inside court: \(isInsideCourt)")
         return correctedPoint
     }
 

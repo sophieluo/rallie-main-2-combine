@@ -37,23 +37,14 @@ struct JointsView: View {
                     let endPoint = scalePoint(end)
                     let lineLength = sqrt(pow(endPoint.x - startPoint.x, 2) + pow(endPoint.y - startPoint.y, 2))
                     
-                    Path { path in
-                        path.move(to: scalePoint(start))
-                        path.addLine(to: scalePoint(end))
+                    // Skip drawing unreasonably long connections (likely stray joints)
+                    if lineLength < min(viewSize.width, viewSize.height) * 0.6 {
+                        Path { path in
+                            path.move(to: scalePoint(start))
+                            path.addLine(to: scalePoint(end))
+                        }
+                        .stroke(Color.green, lineWidth: connectionLineWidth)
                     }
-                    .stroke(Color.green, lineWidth: connectionLineWidth)
-                    .background(
-                        // This is a hack to print line lengths without using print() in the view body
-                        Color.clear
-                            .onAppear {
-                                let connectionName = getConnectionName(connection)
-                                print("📏 Line length for connection (\(connection.0), \(connection.1)) - \(connectionName): \(lineLength) pixels")
-                                
-                                if lineLength > 200 {
-                                    print("⚠️ UNUSUALLY LONG LINE: Connection (\(connection.0), \(connection.1)) - \(connectionName) length: \(lineLength) pixels")
-                                }
-                            }
-                    )
                 }
             }
             
