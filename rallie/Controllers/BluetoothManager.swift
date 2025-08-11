@@ -356,13 +356,23 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         print("📤 sendPositionCommand called with x=\(x), y=\(y), speed=\(speed), spin=\(spin)")
         print("📤 DEBUG: Connection state - isConnected: \(isConnected), commandCharacteristic: \(commandCharacteristic != nil ? "available" : "nil")")
         
-        // Convert normalized coordinates (0.0-1.0) to angles
-        // Map x (0.0-1.0) to Yaw angle (0-90)
-        let yawAngle = UInt8(min(90, max(0, Int(x * 90))))
+        // Convert coordinates (0-1000) to normalized coordinates (0.0-1.0)
+        let normalizedX = min(1.0, max(0.0, x / 1000.0))
+        let normalizedY = min(1.0, max(0.0, y / 1000.0))
         
-        // Map y (0.0-1.0) to Pitch angle (0-90)
-        // Invert y since 0 is net (low pitch) and 1 is baseline (high pitch)
-        let pitchAngle = UInt8(min(90, max(0, Int((1-y) * 90))))
+        print("📤 DEBUG: Normalized coordinates - x: \(normalizedX), y: \(normalizedY)")
+        
+        // Map normalized coordinates to angles (0-90)
+        // For yaw: 0 = leftmost, 90 = rightmost
+        // normalizedX: 0.0 (left) -> 1.0 (right) maps to yaw: 0 -> 90
+        let yawAngle = UInt8(min(90, max(0, Int(normalizedX * 90))))
+        
+        // For pitch: 0 = lowest, 90 = highest
+        // normalizedY: 0.0 (net) -> 1.0 (baseline) maps to pitch: 0 -> 90
+        // Note: We don't invert Y anymore since we want 0 = lowest (net) and 90 = highest (baseline)
+        let pitchAngle = UInt8(min(90, max(0, Int(normalizedY * 90))))
+        
+        print("📤 DEBUG: Calculated angles - yaw: \(yawAngle)° (0=left, 90=right), pitch: \(pitchAngle)° (0=low/net, 90=high/baseline)")
         
         // Convert speed to wheel speeds (0-100)
         // Linear scaling: ballSpeed = 0 → wheelSpeed = 0%, ballSpeed = 80 → wheelSpeed = 100%
