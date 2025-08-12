@@ -5,8 +5,13 @@ struct SettingsView: View {
     @ObservedObject var logicManager: LogicManager = .shared
     @ObservedObject var cameraController: CameraController = .shared
     @ObservedObject var bluetoothManager: BluetoothManager = .shared
+    @ObservedObject private var openAIService = OpenAIService.shared
+    
     @State private var showCamera = false
     @State private var showBluetoothScanner = false
+    @State private var apiKey: String = ""
+    @State private var showingAPIKey: Bool = false
+    @State private var showingSavedAlert: Bool = false
     
     // Ball speed settings
     private let speedOptions = [20, 30, 40, 50, 60, 70, 80]
@@ -36,6 +41,55 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                // OpenAI API Settings Section (NEW)
+                Section(header: Text("OpenAI API Settings")) {
+                    // API Key input
+                    HStack {
+                        if showingAPIKey {
+                            TextField("OpenAI API Key", text: $apiKey)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        } else {
+                            SecureField("OpenAI API Key", text: $apiKey)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                        
+                        Button(action: {
+                            showingAPIKey.toggle()
+                        }) {
+                            Image(systemName: showingAPIKey ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Save button
+                    Button(action: {
+                        saveAPIKey()
+                    }) {
+                        Text("Save API Key")
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                    }
+                    .disabled(apiKey.isEmpty)
+                    
+                    // API Key instructions
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("To use the AI Coach feature, you need an OpenAI API key.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Get your API key at: [openai.com/api-keys](https://platform.openai.com/api-keys)")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.top, 4)
+                }
+                
+                // EXISTING SECTIONS BELOW
                 Section(header: Text("Ball Speed")) {
                     Picker("Speed (mph)", selection: $logicManager.ballSpeed) {
                         ForEach(speedOptions, id: \.self) { speed in
@@ -167,6 +221,18 @@ struct SettingsView: View {
             .onAppear {
                 // Initialize the slider with the current value from LogicManager
                 launchInterval = logicManager.launchInterval
+                
+                // Load API key
+                if let key = openAIService.getAPIKey() {
+                    apiKey = key
+                }
+            }
+            .alert(isPresented: $showingSavedAlert) {
+                Alert(
+                    title: Text("API Key Saved"),
+                    message: Text("Your OpenAI API key has been securely saved."),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
     }
@@ -304,6 +370,12 @@ struct SettingsView: View {
         alertMessage = "Command sent: \(commandString)"
         showAlert = true
         print("📤 Manual command sent: \(commandString)")
+    }
+    
+    // Save the API key to the OpenAIService
+    private func saveAPIKey() {
+        openAIService.saveAPIKey(apiKey)
+        showingSavedAlert = true
     }
 }
 

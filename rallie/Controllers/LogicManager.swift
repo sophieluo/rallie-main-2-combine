@@ -48,54 +48,67 @@ class LogicManager: ObservableObject {
     // Time window for position averaging (shorter for more responsive tracking)
     private var positionAveragingWindow: TimeInterval {
         // Use a smaller window for shorter intervals to be more responsive
-        // and a larger window for longer intervals for more stability
-        return min(launchInterval * 0.3, 1.0)
+        return min(launchInterval * 0.8, 2.0)
     }
-    
-    // Flag to track if a command is in progress (waiting for ACK)
-    private var commandInProgress = false
     
     init(playerPositionPublisher: AnyPublisher<CGPoint?, Never>, bluetoothManager: BluetoothManager) {
         self.bluetoothManager = bluetoothManager
         
-        // Subscribe to player position updates from CameraController
+        // Subscribe to player position updates
         playerPositionPublisher
-            .compactMap { $0 } // Ignore nil values
+            .receive(on: RunLoop.main)
             .sink { [weak self] position in
-                guard let self = self else { return }
+                guard let self = self, let position = position else { return }
                 
-                // Store the new position with timestamp
-                self.timedPositionBuffer.append((point: position, timestamp: Date()))
-                
-                // Debug logging to check conditions
-                print("🔍 Position received: \(position), controlMode: \(self.controlMode), ballActive: \(self.ballActive)")
-                print("🔍 DEBUG: Player position buffer size: \(self.timedPositionBuffer.count), last command sent: \(Date().timeIntervalSince(self.lastCommandSent))s ago")
-                
-                // In interactive mode, we process positions as they come in
-                if self.controlMode == .interactive && self.ballActive {
-                    print("✅ Conditions met for sending command: interactive mode and ball active")
-                    self.attemptToSendSmoothedCommand()
-                } else {
-                    if self.controlMode != .interactive {
-                        print("❌ Not sending command: controlMode is not interactive (\(self.controlMode))")
-                    }
-                    if !self.ballActive {
-                        print("❌ Not sending command: ball machine is not active")
-                    }
+                // Only process positions in interactive mode
+                if self.controlMode == .interactive {
+                    self.processNewPlayerPosition(position)
                 }
             }
             .store(in: &cancellables)
     }
     
-    /// Manually send a command for a specific target point (used in manual mode)
+    /// Process a new player position update
+    private func processNewPlayerPosition(_ position: CGPoint) {
+        let now = Date()
+        
+        // Add to position buffer
+        timedPositionBuffer.append((point: position, timestamp: now))
+        
+        // Remove positions older than the averaging window
+        timedPositionBuffer = timedPositionBuffer.filter {
+            now.timeIntervalSince($0.timestamp) <= positionAveragingWindow
+        }
+        
+        // Try to send a command based on the smoothed position
+        attemptToSendSmoothedCommand()
+    }
+    
+    /// Set ball speed (20-80mph in 10mph increments)
+    func setBallSpeed(_ speed: Int) {
+        let clampedSpeed = min(max(speed, CommandLookup.minSpeed), CommandLookup.maxSpeed)
+        // Round to nearest 10mph
+        ballSpeed = (clampedSpeed / CommandLookup.speedInterval) * CommandLookup.speedInterval
+    }
+    
+    /// Set spin type
+    func setSpinType(_ type: SpinType) {
+        spinType = type
+    }
+    
+    /// Set launch interval (2-9 seconds)
+    func setLaunchInterval(_ interval: TimeInterval) {
+        launchInterval = min(max(interval, LogicManager.minLaunchInterval), LogicManager.maxLaunchInterval)
+    }
+    
+    /// Send a command to the ball machine for a specific target point
     func sendCommandForTargetPoint(_ point: CGPoint) {
         // Update last command zone for display
         lastCommandZone = CommandLookup.zoneID(for: point)
         
         // Convert court coordinates to integers for ESP32
-        // Scale to 0-1000 range for better precision
-        let x = Int(min(max(point.x, 0), CourtLayout.courtWidth) * (1000.0 / CourtLayout.courtWidth))
-        let y = Int(min(max(point.y, 0), CourtLayout.courtLength) * (1000.0 / CourtLayout.courtLength))
+        let x = Int(point.x * (1000.0 / CourtLayout.courtWidth))
+        let y = Int(point.y * (1000.0 / CourtLayout.courtLength))
         
         // Convert spin type to integer value
         let spinValue: Int
@@ -106,107 +119,67 @@ class LogicManager: ObservableObject {
             spinValue = 1
         case .extremeTopspin:
             spinValue = 2
+        case .backspin:
+            spinValue = -1
+        case .extremeBackspin:
+            spinValue = -2
         }
         
-        // Send position command directly to ESP32
-        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue))
-        print("📤 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Sent command for point \(point)")
+        // Send command to the ball machine
+        bluetoothManager.sendPositionCommand(
+            x: Double(x),
+            y: Double(y),
+            speed: Double(ballSpeed),
+            spin: Double(spinValue)
+        )
         
-        // Update last sent timestamp
+        // Update last command time
         lastCommandSent = Date()
     }
     
-    /// Set ball speed (20-80mph in 10mph increments)
-    func setBallSpeed(_ speed: Int) {
-        let clampedSpeed = min(max(speed, CommandLookup.minSpeed), CommandLookup.maxSpeed)
-        // Round to nearest 10mph
-        ballSpeed = (clampedSpeed / CommandLookup.speedInterval) * CommandLookup.speedInterval
-        print("🏓 Ball speed set to \(ballSpeed)mph")
-    }
-    
-    /// Set spin type
-    func setSpinType(_ spin: SpinType) {
-        spinType = spin
-        print("🔄 Spin type set to \(spin.description)")
-    }
-    
-    /// Set launch interval (2-9 seconds)
-    func setLaunchInterval(_ interval: TimeInterval) {
-        let clampedInterval = min(max(interval, LogicManager.minLaunchInterval), LogicManager.maxLaunchInterval)
-        launchInterval = clampedInterval
-        print("⏱️ Launch interval set to \(String(format: "%.1f", launchInterval))s")
-    }
-    
-    /// Toggle ball machine active state
-    func toggleBallMachine() {
-        ballActive = !ballActive
-        
-        if !ballActive {
-            // Stop the machine by sending a stop command
-            bluetoothManager.sendPositionCommand(x: 0, y: 0, speed: 0, spin: 0)
-            print("⏹️ Ball machine stopped")
-        } else {
-            print("▶️ Ball machine activated")
-            // Send initial command based on current mode
-            if controlMode == .interactive {
-                attemptToSendSmoothedCommand()
-            }
-        }
-    }
-    
-    /// Toggle between manual and interactive modes
+    /// Switch between manual and interactive control modes
     func toggleControlMode() {
-        controlMode = (controlMode == .manual) ? .interactive : .manual
-        print("🔄 Switched to \(controlMode == .manual ? "manual" : "interactive") mode")
+        controlMode = controlMode == .manual ? .interactive : .manual
         
         // Clear position buffer when switching modes
         timedPositionBuffer.removeAll()
     }
     
+    /// Private method to attempt sending a command based on smoothed player position
     private func attemptToSendSmoothedCommand() {
         let now = Date()
         
         // Respect interval between commands
         guard now.timeIntervalSince(lastCommandSent) >= launchInterval else {
-            print("⏱️ Command skipped: Interval not reached (last: \(String(format: "%.1f", now.timeIntervalSince(lastCommandSent)))s / required: \(String(format: "%.1f", launchInterval))s)")
             return
         }
         
-        // Don't send a new command if we're still waiting for ACK from the previous one
-        guard !commandInProgress else {
-            print("⏱️ Command skipped: Previous command still in progress (waiting for ACK)")
+        // Need at least a few positions for smoothing
+        guard timedPositionBuffer.count >= 3 else {
             return
         }
         
-        // Keep only data from the last 3 seconds
-        let oldCount = timedPositionBuffer.count
-        timedPositionBuffer = timedPositionBuffer.filter { now.timeIntervalSince($0.timestamp) <= 3.0 }
-        print("🧹 DEBUG: Cleaned position buffer: removed \(oldCount - timedPositionBuffer.count) old positions")
+        // Calculate weighted average position (more recent positions have higher weight)
+        var totalWeight: Double = 0
+        var weightedSumX: Double = 0
+        var weightedSumY: Double = 0
         
-        // Extract only positions from the recent window for averaging
-        let recent = timedPositionBuffer
-            .filter { now.timeIntervalSince($0.timestamp) <= positionAveragingWindow }
-            .map { $0.point }
-        
-        guard !recent.isEmpty else {
-            print("⚠️ No recent positions in last \(String(format: "%.1f", positionAveragingWindow))s to average")
-            return
+        for (i, positionData) in timedPositionBuffer.enumerated() {
+            // Linear weight: newer positions have higher weight
+            let weight = Double(i + 1)
+            totalWeight += weight
+            
+            weightedSumX += weight * Double(positionData.point.x)
+            weightedSumY += weight * Double(positionData.point.y)
         }
         
-        print("🎯 Found \(recent.count) positions in averaging window of \(String(format: "%.1f", positionAveragingWindow))s")
-        
-        // Compute average position to represent player's current location
-        let avgX = recent.map { $0.x }.reduce(0, +) / CGFloat(recent.count)
-        let avgY = recent.map { $0.y }.reduce(0, +) / CGFloat(recent.count)
+        let avgX = weightedSumX / totalWeight
+        let avgY = weightedSumY / totalWeight
         let avgPoint = CGPoint(x: avgX, y: avgY)
         
-        // Get zone ID for logging purposes
+        // Get zone ID for the averaged position
         let zoneID = CommandLookup.zoneID(for: avgPoint)
         
-        // Update last command zone for display
-        lastCommandZone = zoneID
-        
-        // Convert court coordinates to integers for ESP32
         // Scale to 0-1000 range for better precision
         let x = Int(avgPoint.x * (1000.0 / CourtLayout.courtWidth))
         let y = Int(avgPoint.y * (1000.0 / CourtLayout.courtLength))
@@ -220,41 +193,26 @@ class LogicManager: ObservableObject {
             spinValue = 1
         case .extremeTopspin:
             spinValue = 2
+        case .backspin:
+            spinValue = -1
+        case .extremeBackspin:
+            spinValue = -2
         }
         
         if let zoneID = zoneID {
-            print("📍 \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged player position: \(avgPoint), mapped to zone \(zoneID)")
-        } else {
-            print("❓ \(controlMode == .interactive ? "Interactive" : "Manual") mode: Averaged point \(avgPoint) is outside zone grid — using actual position anyway")
-        }
-        
-        print("🏓 Using ball speed: \(ballSpeed)mph, spin: \(spinType.description), interval: \(String(format: "%.1f", launchInterval))s")
-        
-        // Always send position command with the player's actual position, regardless of zone
-        print("🚀 ATTEMPTING TO SEND COMMAND: x=\(x), y=\(y), speed=\(ballSpeed), spin=\(spinValue)")
-        print("🚀 DEBUG: Raw values for sendPositionCommand - x: \(Double(x)), y: \(Double(y)), speed: \(Double(ballSpeed)), spin: \(Double(spinValue))")
-        print("🚀 CRITICAL DEBUG: ballSpeed type: \(type(of: ballSpeed)), value: \(ballSpeed), converted to Double: \(Double(ballSpeed))")
-        
-        // Set command in progress flag
-        commandInProgress = true
-        
-        // Update last command sent timestamp
-        lastCommandSent = now
-        
-        // Send command with completion handler for ACK
-        bluetoothManager.sendPositionCommand(x: Double(x), y: Double(y), speed: Double(ballSpeed), spin: Double(spinValue)) { [weak self] success in
-            guard let self = self else { return }
+            // Update last command zone for display
+            lastCommandZone = zoneID
             
-            // Command is no longer in progress
-            self.commandInProgress = false
+            // Send command to the ball machine
+            bluetoothManager.sendPositionCommand(
+                x: Double(x),
+                y: Double(y),
+                speed: Double(ballSpeed),
+                spin: Double(spinValue)
+            )
             
-            if success {
-                print("✅ Command ACK received - command executed successfully")
-            } else {
-                print("⚠️ Command failed or timed out")
-            }
+            // Update last command time
+            lastCommandSent = Date()
         }
-        
-        print("✅ Command sent to BluetoothManager")
     }
 }

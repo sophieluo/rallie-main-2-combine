@@ -2,17 +2,50 @@ import Foundation
 import CoreGraphics
 
 /// Ball spin types
-enum SpinType: Int, CaseIterable {
+enum SpinType: Int, Codable, CaseIterable {
     case flat = 0
     case topspin = 1
     case extremeTopspin = 2
+    case backspin = 3
+    case extremeBackspin = 4
     
     var description: String {
         switch self {
         case .flat: return "Flat"
         case .topspin: return "Topspin"
         case .extremeTopspin: return "Extreme Topspin"
+        case .backspin: return "Backspin"
+        case .extremeBackspin: return "Extreme Backspin"
         }
+    }
+    
+    // For JSON encoding/decoding with string values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intValue = try? container.decode(Int.self) {
+            // Decode from integer
+            guard let type = SpinType(rawValue: intValue) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid spin type value")
+            }
+            self = type
+        } else {
+            // Decode from string
+            let stringValue = try container.decode(String.self)
+            switch stringValue.lowercased() {
+            case "flat": self = .flat
+            case "topspin": self = .topspin
+            case "extreme_topspin": self = .extremeTopspin
+            case "backspin": self = .backspin
+            case "extreme_backspin": self = .extremeBackspin
+            default:
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid spin type string")
+            }
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(self.rawValue)
     }
 }
 
@@ -26,12 +59,12 @@ struct CommandLookup {
     static let speedInterval = 10
     static let speedLevels = 7  // (20, 30, 40, 50, 60, 70, 80)
     
-    // Total combinations: 16 zones × 7 speeds × 3 spins = 336 different trajectories
+    // Total combinations: 16 zones × 7 speeds × 5 spins = 560 different trajectories
     
     // 3D lookup table: [zoneID][spinType][speedLevel] -> command bytes
     // This structure represents:
     // - 16 different zones (target locations)
-    // - 3 different spin types (flat, topspin, extreme topspin)
+    // - 5 different spin types (flat, topspin, extreme topspin, backspin, extreme backspin)
     // - 7 different speed levels (20, 30, 40, 50, 60, 70, 80 mph)
     private static let commandTable: [[[CommandParameters]]] = {
         // Initialize the 3D array with proper dimensions
