@@ -30,7 +30,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         
     var detectedObjects: [DetectedObject] = [] {
         didSet {
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 self.overlayView.boxes = self.detectedObjects
             }
         }
@@ -82,99 +83,180 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var originalFrameSize: CGSize = .zero
 
     // MARK: - Setup
+    private var videoProcessingQueue = DispatchQueue(label: "VideoQueue")
+    private var lastPublishTime: Date?
+    private let publishInterval: TimeInterval = 0.1
+    
     func startSession(in view: UIView, screenSize: CGSize) {
         print("🎥 Starting camera session setup")
         
-        // Check if session is already running
-        guard !session.isRunning else {
-            print("⚠️ Session already running")
-            return
-        }
-
-        session.sessionPreset = .high
-        session.inputs.forEach { session.removeInput($0) }
-        session.outputs.forEach { session.removeOutput($0) }
-
-        // Check if calibration data is available
-        if calibrationPoints.count < 8 {
-            print("⚠️ Calibration data not available")
-            initializeCalibrationPoints(for: screenSize)
-            isCalibrationMode = true
-        } else {
-            print("✅ Using existing calibration data")
-            isCalibrationMode = false
+        // Create a semaphore to ensure proper synchronization
+        let setupSemaphore = DispatchSemaphore(value: 0)
+        
+        // First, ensure we clean up any existing session on the main thread
+        if let existingLayer = previewLayer {
+            existingLayer.removeFromSuperlayer()
+            previewLayer = nil
         }
         
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ Failed to get camera device")
-            return
+        // Reset state on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.detectedJoints = Array(repeating: nil, count: 18)
         }
         
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            guard session.canAddInput(input) else {
-                print("❌ Cannot add camera input")
+        // Stop the session and clean up inputs/outputs synchronously
+        // to ensure they're fully removed before adding new ones
+        if session.isRunning {
+            print("⚠️ Camera session already running, stopping first")
+            session.stopRunning()
+        }
+        
+        // Remove all inputs and outputs to start fresh - do this synchronously
+        print("🧹 Removing all existing inputs and outputs")
+        session.beginConfiguration()
+        
+        for input in session.inputs {
+            print("🗑️ Removing input: \(input)")
+            session.removeInput(input)
+        }
+        
+        for output in session.outputs {
+            print("🗑️ Removing output: \(output)")
+            session.removeOutput(output)
+        }
+        
+        session.commitConfiguration()
+        print("✅ Session cleared of all inputs and outputs")
+        
+        // Move the heavy lifting to a background thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Configure camera session
+            self.session.beginConfiguration()
+            
+            // Set up camera input
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+                print("❌ Failed to get camera device")
+                self.session.commitConfiguration()
+                setupSemaphore.signal()
                 return
             }
-            session.addInput(input)
-            print("✅ Camera input added successfully")
             
-            let output = AVCaptureVideoDataOutput()
-            output.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoQueue"))
-            guard session.canAddOutput(output) else {
-                print("❌ Cannot add video output")
-                return
-            }
-            session.addOutput(output)
-            self.output = output
-            print("✅ Video output added successfully")
-
-            previewLayer?.removeFromSuperlayer()
-            let preview = AVCaptureVideoPreviewLayer(session: session)
-            preview.videoGravity = .resizeAspectFill
-            preview.frame = view.bounds
-            preview.connection?.videoOrientation = .landscapeRight
-            view.layer.insertSublayer(preview, at: 0)
-            self.previewLayer = preview
-            print("✅ Preview layer configured")
-
-            session.beginConfiguration()
-            if let connection = output.connection(with: .video) {
-                if connection.isVideoOrientationSupported {
-                    connection.videoOrientation = .landscapeRight
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                
+                // Double check that we can add this input
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                    print("✅ Camera input added successfully")
+                } else {
+                    print("❌ Failed to add camera input - not compatible with session")
+                    self.session.commitConfiguration()
+                    setupSemaphore.signal()
+                    return
                 }
-                if connection.isVideoMirroringSupported {
-                    connection.isVideoMirrored = false
+                
+                // Set up video output
+                let output = AVCaptureVideoDataOutput()
+                output.setSampleBufferDelegate(self, queue: self.videoProcessingQueue)
+                output.alwaysDiscardsLateVideoFrames = true
+                
+                if self.session.canAddOutput(output) {
+                    self.session.addOutput(output)
+                    self.output = output
+                    print("✅ Video output added successfully")
+                } else {
+                    print("❌ Failed to add video output")
+                    self.session.commitConfiguration()
+                    setupSemaphore.signal()
+                    return
                 }
+                
+                // Configure connection
+                if let connection = output.connection(with: .video) {
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                    }
+                }
+                
+                self.session.commitConfiguration()
+                
+                // Store the original frame size for coordinate mapping
+                let formatDesc = device.activeFormat.formatDescription
+                let dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc)
+                let originalSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+                
+                // Start session after configuration is complete
+                print("▶️ Starting camera session")
+                self.session.startRunning()
+                print("✅ Camera session started")
+                
+                // Update UI on main thread
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    
+                    // Update original frame size
+                    self.originalFrameSize = originalSize
+                    print("📏 Original frame size: \(originalSize)")
+                    
+                    // Configure preview layer
+                    let preview = AVCaptureVideoPreviewLayer(session: self.session)
+                    preview.videoGravity = .resizeAspectFill
+                    
+                    // Set the frame to fill the entire view
+                    preview.frame = view.bounds
+                    
+                    view.layer.insertSublayer(preview, at: 0)
+                    self.previewLayer = preview
+                    print("✅ Preview layer configured with bounds: \(view.bounds)")
+                    
+                    // Signal that setup is complete
+                    setupSemaphore.signal()
+                }
+                
+            } catch {
+                print("❌ Error setting up camera: \(error.localizedDescription)")
+                self.session.commitConfiguration()
+                setupSemaphore.signal()
             }
-            session.commitConfiguration()
-            
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                print("🎬 Starting capture session")
-                self?.session.startRunning()
-                print("✅ Capture session started")
-            }
-
-        } catch {
-            print("❌ Camera setup error: \(error.localizedDescription)")
         }
         
-        // Check if calibration has been performed before
-        if UserDefaults.standard.bool(forKey: hasCalibrationBeenPerformedKey) {
-            hasCalibrationBeenPerformedBefore = true
-            showRecalibrationPrompt = true
+        // Wait for a short timeout to ensure setup completes or fails gracefully
+        _ = setupSemaphore.wait(timeout: .now() + 5.0)
+    }
+    
+    func updatePreviewFrame(to bounds: CGRect) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            // Ensure the preview layer fills the entire view in landscape orientation
+            self.previewLayer?.frame = bounds
+            self.previewLayer?.videoGravity = .resizeAspectFill
         }
     }
 
     func stopSession() {
         print("🛑 Stopping camera session")
-        session.stopRunning()
-        DispatchQueue.main.async { [weak self] in
-            self?.previewLayer?.removeFromSuperlayer()
-            self?.previewLayer = nil
-            self?.output = nil
+        
+        // Ensure we're not in the middle of configuration
+        if session.isRunning {
+            // Stop session on background thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                self.session.stopRunning()
+                
+                // Clean up resources on main thread
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.previewLayer?.removeFromSuperlayer()
+                    self.previewLayer = nil
+                    
+                    print("✅ Camera session stopped successfully")
+                }
+            }
+        } else {
+            print("⚠️ Camera session already stopped")
         }
-        print("✅ Camera session stopped")
     }
 
     func initializeCalibrationPoints(for screenSize: CGSize) {
@@ -308,7 +390,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return LineSegment(start: p1, end: p2)
         }
         
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.projectedCourtLines = transformedLines
         }
     }
@@ -342,7 +425,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         
         // Update original frame size on main thread
         DispatchQueue.main.async { [weak self] in
-            self?.originalFrameSize = originalSize
+            guard let self = self else { return }
+            self.originalFrameSize = originalSize
         }
         
         // Process object detection synchronously to avoid capturing pixelBuffer
@@ -364,7 +448,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             }
             
             // Process player position on main thread
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 self.processPlayerPosition()
             }
         }
@@ -410,7 +495,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 )
                 
                 // Update UI with latest action and predictions on main thread
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.currentAction = self.actionClassifier.currentAction
                     self.actionConfidence = self.actionClassifier.actionConfidence
                     self.predictions = self.actionClassifier.predictions
@@ -419,7 +505,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     
                     print("🎾 Updated action: \(self.currentAction) with confidence: \(self.actionConfidence)")
                     print("👁️ Updated joints: \(self.detectedJoints.compactMap { $0 }.count) valid joints")
-                    if !self.predictions.isEmpty {
+                    if !(self.predictions.isEmpty) {
                         print("📊 Current predictions count: \(self.predictions.count)")
                     }
                 }
@@ -427,7 +513,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 print("⚠️ No pose detected for frame \(currentFrameIndex)")
                 
                 // Even if no pose is detected, update UI to show "Unknown" action
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.currentAction = "Unknown"
                     self.actionConfidence = 0.0
                 }
@@ -459,7 +546,8 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 )
                 
                 // Update UI with latest action
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.currentAction = self.actionClassifier.currentAction
                     self.actionConfidence = self.actionClassifier.actionConfidence
                     self.predictions = self.actionClassifier.predictions
@@ -500,21 +588,11 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         //print("👟 Detected player position")
     }
 
-    func updatePreviewFrame(to bounds: CGRect) {
-        DispatchQueue.main.async {
-            self.previewLayer?.frame = bounds
-        }
-    }
-    
-    // For throttling position updates to LogicManager
-    private var lastPublishTime: Date? = nil
-    private let publishInterval: TimeInterval = 0.5 // Publish every 0.5 seconds
-    
-    private func updatePlayerPosition(_ point: CGPoint) {
-        DispatchQueue.main.async {
+    func updatePlayerPosition(_ point: CGPoint) {
+        DispatchQueue.main.async { [weak self] in
             // Initialize Kalman filter with first position if needed
-            if self.playerPositionFilter == nil {
-                self.playerPositionFilter = KalmanFilter(
+            if self?.playerPositionFilter == nil {
+                self?.playerPositionFilter = KalmanFilter(
                     initialPosition: point,
                     positionUncertainty: 5.0,  // Moderate initial uncertainty
                     velocityUncertainty: 10.0, // Higher velocity uncertainty
@@ -526,38 +604,38 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             
             // Update filter with new measurement and get smoothed position
             let timestamp = Date().timeIntervalSince1970
-            let smoothedPosition = self.playerPositionFilter!.update(with: point, at: timestamp)
+            let smoothedPosition = self?.playerPositionFilter?.update(with: point, at: timestamp)
             
             // Always update the local property for internal use
-            self.projectedPlayerPosition = smoothedPosition
+            self?.projectedPlayerPosition = smoothedPosition
             
             // Only publish to LogicManager at the specified interval
             let now = Date()
-            if self.lastPublishTime == nil || now.timeIntervalSince(self.lastPublishTime!) >= self.publishInterval {
-                self.playerPositionPublisher.send(smoothedPosition)
-                self.lastPublishTime = now
+            if self?.lastPublishTime == nil || now.timeIntervalSince((self?.lastPublishTime)!) >= (self?.publishInterval ?? 0) {
+                self?.playerPositionPublisher.send(smoothedPosition ?? .zero)
+                self?.lastPublishTime = now
                 
                 // Enhanced logging for published positions
-                let formattedX = String(format: "%.2f", smoothedPosition.x)
-                let formattedY = String(format: "%.2f", smoothedPosition.y)
-                let courtPercentX = Int((smoothedPosition.x / CourtLayout.courtWidth) * 100)
-                let courtPercentY = Int((smoothedPosition.y / CourtLayout.courtLength) * 100)
+                let formattedX = String(format: "%.2f", smoothedPosition?.x ?? 0)
+                let formattedY = String(format: "%.2f", smoothedPosition?.y ?? 0)
+                let courtPercentX = Int(((smoothedPosition?.x ?? 0) / CourtLayout.courtWidth) * 100)
+                let courtPercentY = Int(((smoothedPosition?.y ?? 0) / CourtLayout.courtLength) * 100)
                 
                 print("📊 Published position: (\(formattedX)m, \(formattedY)m) - \(courtPercentX)% across, \(courtPercentY)% down court")
                 
                 // Log velocity if available
-//                if let filter = self.playerPositionFilter {
+//                if let filter = self?.playerPositionFilter {
 //                    let velocity = filter.currentVelocity
 //                    let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
 //                    let formattedSpeed = String(format: "%.2f", speed)
-//                    self.playerSpeed = speed
+//                    self?.playerSpeed = speed
 //                    //print("🏃 Player speed: \(formattedSpeed) m/s")
 //                }
             }
             
             // Log the difference between raw and smoothed positions (only if significant)
-            let dx = smoothedPosition.x - point.x
-            let dy = smoothedPosition.y - point.y
+            let dx = (smoothedPosition?.x ?? 0) - point.x
+            let dy = (smoothedPosition?.y ?? 0) - point.y
             let distance = sqrt(dx*dx + dy*dy)
 //            if distance > 0.1 { // Only log if difference is significant
 //                print("🧮 Kalman smoothing: diff=\(String(format: "%.2f", distance))m")

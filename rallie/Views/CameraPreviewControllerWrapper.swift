@@ -13,14 +13,17 @@ struct CameraPreviewControllerWrapper: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIViewController {
         let viewController = UIViewController()
-        controller.startSession(in: viewController.view, screenSize: UIScreen.main.bounds.size)
+        // Use the full screen size for the camera preview
+        let screenSize = UIScreen.main.bounds.size
+        // Swap width and height for landscape orientation
+        let landscapeSize = CGSize(width: max(screenSize.width, screenSize.height), 
+                                  height: min(screenSize.width, screenSize.height))
+        controller.startSession(in: viewController.view, screenSize: landscapeSize)
         return viewController
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        // Optional: Update camera layout on rotation if needed
+        // Update camera layout to fill the entire view
         controller.updatePreviewFrame(to: uiViewController.view.bounds)
     }
 }
-
-

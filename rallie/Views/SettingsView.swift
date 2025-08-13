@@ -211,7 +211,7 @@ struct SettingsView: View {
             }
             .fullScreenCover(isPresented: $showCamera) {
                 if #available(iOS 16.0, *) {
-                    CameraView(cameraController: cameraController)
+                    LandscapeWrapper(content: CameraView(cameraController: cameraController))
                 } else {
                     // Fallback for earlier iOS versions
                     Text("Camera tracking requires iOS 16 or later")

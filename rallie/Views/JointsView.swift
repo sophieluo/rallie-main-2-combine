@@ -31,7 +31,8 @@ struct JointsView: View {
         ZStack {
             // Draw connections between joints
             ForEach(connections, id: \.0) { connection in
-                if let start = joints[connection.0],
+                if connection.0 < joints.count && connection.1 < joints.count,
+                   let start = joints[connection.0],
                    let end = joints[connection.1] {
                     let startPoint = scalePoint(start)
                     let endPoint = scalePoint(end)
@@ -49,7 +50,7 @@ struct JointsView: View {
             }
             
             // Draw joints
-            ForEach(0..<joints.count, id: \.self) { index in
+            ForEach(0..<min(joints.count, 17), id: \.self) { index in
                 if let point = joints[index], isValidPoint(point) {
                     Circle()
                         .fill(getJointColor(for: index))
@@ -133,7 +134,8 @@ struct JointsView: View {
     private func calculateLineDistances() {
         print("LINE_LENGTHS:")
         for connection in connections {
-            if let start = joints[connection.0],
+            if connection.0 < joints.count && connection.1 < joints.count,
+               let start = joints[connection.0],
                let end = joints[connection.1] {
                 let startPoint = scalePoint(start)
                 let endPoint = scalePoint(end)
@@ -220,7 +222,7 @@ struct JointsView: View {
         case (10, 11): return "Right Knee to Right Ankle"
         case (12, 13): return "Left Hip to Left Knee"
         case (13, 14): return "Left Knee to Left Ankle"
-        default: return "Unknown Connection"
+        default: return "Connection (\(connection.0), \(connection.1))"
         }
     }
 }

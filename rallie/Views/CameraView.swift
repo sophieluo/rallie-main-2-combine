@@ -7,6 +7,7 @@ struct CameraView: View {
     @ObservedObject var bluetoothManager = BluetoothManager.shared
     @ObservedObject var logicManager = LogicManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var deviceOrientation = UIDevice.current.orientation
     
     init(cameraController: CameraController) {
         _cameraController = ObservedObject(wrappedValue: cameraController)
@@ -14,80 +15,18 @@ struct CameraView: View {
 
     var body: some View {
         ZStack {
+            // Camera preview
+            CameraPreviewControllerWrapper(controller: cameraController)
+            
+            // Joints and court lines
             GeometryReader { geometry in
                 ZStack {
-                    CameraPreviewControllerWrapper(controller: cameraController)
-                    
                     // Joints overlay
                     JointsView(
                         joints: cameraController.detectedJoints,
                         originalSize: cameraController.originalFrameSize,
                         viewSize: geometry.size
                     )
-                    .allowsHitTesting(false) // Allow taps to pass through
-                    
-                    // Action prediction overlay
-                    VStack {
-                        Spacer()
-                        
-                        HStack {
-                            Spacer()
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Action: \(cameraController.currentAction)")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                
-                                Text("Confidence: \(Int(cameraController.actionConfidence * 100))%")
-                                    .font(.subheadline)
-                                    .foregroundColor(.white)
-                            }
-                            .padding()
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(8)
-                            .padding()
-                            .allowsHitTesting(false) // Allow taps to pass through
-                        }
-                    }
-                    
-                    // Transparent overlay to capture taps
-                    Color.clear
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { value in
-                                    let tapPoint = value.location
-                                    
-                                    if cameraController.isCalibrationMode {
-                                        print("📍 Tap location: \(tapPoint)")
-                                        cameraController.handleCalibrationTap(at: tapPoint)
-                                    }
-                                }
-                        )
-                    
-                    // Only show user tapped points, not the calculated calibration points
-                    // User tapped points overlay (larger and more visible)
-                    ForEach(0..<cameraController.userTappedPoints.count, id: \.self) { index in
-                        let point = cameraController.userTappedPoints[index]
-                        ZStack {
-                            // Outer glow for better visibility
-                            Circle()
-                                .fill(Color.white.opacity(0.3))
-                                .frame(width: 30, height: 30)
-                            
-                            // Main colored circle
-                            Circle()
-                                .fill(getCalibrationPointColor(for: index))
-                                .frame(width: 20, height: 20)
-                            
-                            // Label for the point
-                            Text("\(index + 1)")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                        }
-                        .position(x: point.x, y: point.y)
-                    }
                     
                     // Court lines overlay
                     Path { path in
@@ -98,6 +37,25 @@ struct CameraView: View {
                     }
                     .stroke(Color.green, lineWidth: 2)
                     
+                    // Calibration points
+                    ForEach(0..<cameraController.userTappedPoints.count, id: \.self) { index in
+                        let point = cameraController.userTappedPoints[index]
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 30, height: 30)
+                            
+                            Circle()
+                                .fill(getCalibrationPointColor(for: index))
+                                .frame(width: 20, height: 20)
+                            
+                            Text("\(index + 1)")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                        }
+                        .position(x: point.x, y: point.y)
+                    }
+                    
                     // Calibration or overlay UI
                     if cameraController.isCalibrationMode {
                         CalibrationPointsView(cameraController: cameraController)
@@ -106,35 +64,69 @@ struct CameraView: View {
                             isActivated: true, cameraController: cameraController
                         )
                     }
+                    
+                    // Transparent overlay to capture taps
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { value in
+                                    if cameraController.isCalibrationMode {
+                                        cameraController.handleCalibrationTap(at: value.location)
+                                    }
+                                }
+                        )
                 }
             }
-
-            // Top UI elements
+            
+            // UI Controls - Hardcoded positions
             VStack {
                 HStack {
-                    // Top-left close button
+                    Spacer()
+                    
+                    // Close button in upper right in portrait
                     Button(action: {
                         cameraController.stopSession()
                         dismiss()
                     }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
+                            .font(.system(size: 30))
                             .foregroundColor(.white)
-                            .padding()
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                            .padding(20)
                     }
+                    .rotationEffect(deviceOrientation.isPortrait ? .degrees(90) : .degrees(0))
+                }
+                
+                Spacer()
+                
+                HStack {
+                    // Action classification in lower left in portrait
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Action: \(cameraController.currentAction)")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        Text("Confidence: \(Int(cameraController.actionConfidence * 100))%")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(8)
+                    .padding(20)
+                    .rotationEffect(deviceOrientation.isPortrait ? .degrees(90) : .degrees(0))
                     
                     Spacer()
                     
-                    // Mini court view in top-right
+                    // Mini court in bottom right
                     if !cameraController.isCalibrationMode {
                         MiniCourtView(playerPosition: cameraController.projectedPlayerPosition)
                             .frame(width: 140, height: 100)
-                            .padding(.trailing, 10)
                     }
                 }
-                .padding(.top, 10)
                 
-                // Only show calibration instructions when in calibration mode
+                // Calibration instructions
                 if cameraController.isCalibrationMode {
                     Text("Tap the 5 key points on the court to calibrate")
                         .foregroundColor(.white)
@@ -142,10 +134,9 @@ struct CameraView: View {
                         .padding(.vertical, 5)
                         .background(Color.black.opacity(0.7))
                         .cornerRadius(8)
-                        .padding(.top, 10)
+                        .padding(.bottom, 20)
+                        .rotationEffect(deviceOrientation.isPortrait ? .degrees(90) : .degrees(0))
                 }
-
-                Spacer()
             }
         }
         .ignoresSafeArea(.all)
@@ -169,6 +160,9 @@ struct CameraView: View {
         .onDisappear {
             // Stop camera session when view disappears
             cameraController.stopSession()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            deviceOrientation = UIDevice.current.orientation
         }
     }
     
