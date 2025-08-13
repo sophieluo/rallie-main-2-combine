@@ -123,6 +123,7 @@ struct CameraView: View {
                     if !cameraController.isCalibrationMode {
                         MiniCourtView(playerPosition: cameraController.projectedPlayerPosition)
                             .frame(width: 140, height: 100)
+                            .rotationEffect(.degrees(-90))
                     }
                 }
                 
@@ -154,7 +155,8 @@ struct CameraView: View {
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let window = windowScene.windows.first {
                 let screenSize = window.bounds.size
-                cameraController.startSession(in: window, screenSize: screenSize)
+                // Don't start the session here - let the CameraPreviewControllerWrapper handle it
+                // This prevents lifecycle issues with the preview layer
             }
         }
         .onDisappear {
