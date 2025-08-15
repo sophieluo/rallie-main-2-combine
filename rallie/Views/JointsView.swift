@@ -153,13 +153,24 @@ struct JointsView: View {
     }
     
     // Scale point from original image coordinates to view coordinates
+    // and rotate 90 degrees clockwise
     private func scalePoint(_ point: CGPoint) -> CGPoint {
         let scaleX = viewSize.width / originalSize.width
         let scaleY = viewSize.height / originalSize.height
         
-        return CGPoint(
+        // First scale the point
+        let scaledPoint = CGPoint(
             x: point.x * scaleX,
             y: point.y * scaleY
+        )
+        
+        // Then rotate 90 degrees clockwise
+        // For 90 degrees clockwise rotation:
+        // New x = y
+        // New y = width - x
+        return CGPoint(
+            x: scaledPoint.y,
+            y: viewSize.width - scaledPoint.x
         )
     }
     

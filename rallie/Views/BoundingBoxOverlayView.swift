@@ -31,7 +31,7 @@ class BoundingBoxOverlayView: UIView {
             ctx.addRect(convertedRect)
             ctx.drawPath(using: .fillStroke)
 
-            // ✅ Draw red circle indicator in the center of the bounding box
+            // Draw red circle indicator in the center of the bounding box
             let circleRadius: CGFloat = 6
             let center = CGPoint(x: convertedRect.midX, y: convertedRect.midY)
             let circleRect = CGRect(
@@ -80,11 +80,23 @@ class BoundingBoxOverlayView: UIView {
     }
 
     private func convertNormalizedRect(_ rect: CGRect) -> CGRect {
-        return CGRect(
+        // First convert to screen coordinates
+        let standardRect = CGRect(
             x: rect.origin.x * bounds.width,
             y: (1 - rect.origin.y - rect.height) * bounds.height,
             width: rect.width * bounds.width,
             height: rect.height * bounds.height
+        )
+        
+        // Then rotate 90 degrees clockwise
+        // For 90 degrees clockwise rotation:
+        // New x = y
+        // New y = width - x - w
+        return CGRect(
+            x: standardRect.origin.y,
+            y: bounds.width - standardRect.origin.x - standardRect.width,
+            width: standardRect.height,
+            height: standardRect.width
         )
     }
 }

@@ -1,29 +1,15 @@
-//
-//  CameraPreviewControllerWrapper.swift
-//  rallie
-//
-//  Created by Xiexiao_Luo on 4/2/25.
-//
+// //
+// //  CameraPreviewControllerWrapper.swift
+// //  rallie
+// //
+// //  Created by Xiexiao_Luo on 4/2/25.
+// //
 
 import SwiftUI
 import UIKit
 
 struct CameraPreviewControllerWrapper: UIViewControllerRepresentable {
     let controller: CameraController
-
-    class Coordinator: NSObject {
-        var controller: CameraController
-        var parent: CameraPreviewControllerWrapper
-        
-        init(controller: CameraController, parent: CameraPreviewControllerWrapper) {
-            self.controller = controller
-            self.parent = parent
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(controller: controller, parent: self)
-    }
 
     func makeUIViewController(context: Context) -> UIViewController {
         let viewController = UIViewController()

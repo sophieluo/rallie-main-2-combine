@@ -82,6 +82,23 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var detectedJoints: [CGPoint?] = Array(repeating: nil, count: 18)
     @Published var originalFrameSize: CGSize = .zero
 
+//    // MARK: - Coordinate Transformation
+//    // Helper function to rotate a point 90 degrees clockwise within the frame
+//    func rotatePoint90DegreesClockwise(_ point: CGPoint, in size: CGSize) -> CGPoint {
+//        // For 90 degrees clockwise rotation:
+//        // New x = y
+//        // New y = width - x
+//        return CGPoint(
+//            x: point.y,
+//            y: size.width - point.x
+//        )
+//    }
+//    
+//    // Helper function to rotate a point 90 degrees clockwise for all coordinate transformations
+//    func transformPoint(_ point: CGPoint) -> CGPoint {
+//        return rotatePoint90DegreesClockwise(point, in: originalFrameSize)
+//    }
+
     // MARK: - Setup
     private var videoProcessingQueue = DispatchQueue(label: "VideoQueue")
     private var lastPublishTime: Date?
@@ -90,135 +107,143 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     func startSession(in view: UIView, screenSize: CGSize) {
         print("🎥 Starting camera session setup")
         
-        // Create a semaphore to ensure proper synchronization
+        // Create a semaphore to synchronize session setup
         let setupSemaphore = DispatchSemaphore(value: 0)
         
-        // First, ensure we clean up any existing session on the main thread
-        if let existingLayer = previewLayer {
-            existingLayer.removeFromSuperlayer()
-            previewLayer = nil
-        }
-        
-        // Reset state on main thread
-        DispatchQueue.main.async { [weak self] in
-            self?.detectedJoints = Array(repeating: nil, count: 18)
-        }
-        
-        // Stop the session and clean up inputs/outputs synchronously
-        // to ensure they're fully removed before adding new ones
+        // Stop the session first to ensure clean state
         if session.isRunning {
-            print("⚠️ Camera session already running, stopping first")
             session.stopRunning()
         }
         
-        // Remove all inputs and outputs to start fresh - do this synchronously
-        print("🧹 Removing all existing inputs and outputs")
-        session.beginConfiguration()
-        
-        for input in session.inputs {
-            print("🗑️ Removing input: \(input)")
-            session.removeInput(input)
-        }
-        
-        for output in session.outputs {
-            print("🗑️ Removing output: \(output)")
-            session.removeOutput(output)
-        }
-        
-        session.commitConfiguration()
-        print("✅ Session cleared of all inputs and outputs")
-        
-        // Move the heavy lifting to a background thread
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            // Configure camera session
+        // Clean up existing session - use async instead of sync to avoid deadlock
+        DispatchQueue.main.async {
+            // Remove existing inputs and outputs to avoid "Multiple audio/video AVCaptureInputs" error
             self.session.beginConfiguration()
             
-            // Set up camera input
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-                print("❌ Failed to get camera device")
-                self.session.commitConfiguration()
-                setupSemaphore.signal()
-                return
+            // Explicitly remove all inputs and outputs
+            for input in self.session.inputs {
+                self.session.removeInput(input)
             }
             
-            do {
-                let input = try AVCaptureDeviceInput(device: device)
-                
-                // Double check that we can add this input
-                if self.session.canAddInput(input) {
-                    self.session.addInput(input)
-                    print("✅ Camera input added successfully")
-                } else {
-                    print("❌ Failed to add camera input - not compatible with session")
-                    self.session.commitConfiguration()
+            for output in self.session.outputs {
+                self.session.removeOutput(output)
+            }
+            
+            self.session.commitConfiguration()
+            
+            // Remove existing preview layer
+            self.previewLayer?.removeFromSuperlayer()
+            self.previewLayer = nil
+            
+            // Continue with session setup on background thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else {
                     setupSemaphore.signal()
                     return
                 }
                 
-                // Set up video output
-                let output = AVCaptureVideoDataOutput()
-                output.setSampleBufferDelegate(self, queue: self.videoProcessingQueue)
-                output.alwaysDiscardsLateVideoFrames = true
+                print("⚙️ Configuring camera session")
                 
-                if self.session.canAddOutput(output) {
+                // Get camera device
+                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+                    print("❌ Failed to get camera device")
+                    setupSemaphore.signal()
+                    return
+                }
+                
+                do {
+                    // Configure input
+                    let input = try AVCaptureDeviceInput(device: device)
+                    
+                    self.session.beginConfiguration()
+                    
+                    // Add input
+                    guard self.session.canAddInput(input) else {
+                        print("❌ Cannot add camera input")
+                        self.session.commitConfiguration()
+                        setupSemaphore.signal()
+                        return
+                    }
+                    self.session.addInput(input)
+                    print("✅ Camera input added successfully")
+                    
+                    // Configure output
+                    let output = AVCaptureVideoDataOutput()
+                    output.setSampleBufferDelegate(self, queue: DispatchQueue(label: "VideoQueue"))
+                    
+                    // Add output
+                    guard self.session.canAddOutput(output) else {
+                        print("❌ Cannot add video output")
+                        self.session.commitConfiguration()
+                        setupSemaphore.signal()
+                        return
+                    }
                     self.session.addOutput(output)
                     self.output = output
                     print("✅ Video output added successfully")
-                } else {
-                    print("❌ Failed to add video output")
+                    
+                    // Configure video orientation
+                    if let connection = output.connection(with: .video) {
+                        if connection.isVideoOrientationSupported {
+                            connection.videoOrientation = .portrait
+                        }
+                        if connection.isVideoMirroringSupported {
+                            connection.isVideoMirrored = false
+                        }
+                    }
+                    
+                    // Get the original frame size for later use
+                    let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+                    let originalSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+                    
+                    // Commit configuration
+                    self.session.commitConfiguration()
+                    
+                    // Start session after configuration is complete
+                    print("▶️ Starting camera session")
+                    self.session.startRunning()
+                    print("✅ Camera session started")
+                    
+                    // Update UI on main thread
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        
+                        // Update original frame size
+                        self.originalFrameSize = CGSize(width: CGFloat(originalSize.width), height: CGFloat(originalSize.height))
+                        print("📏 Original frame size: \(self.originalFrameSize)")
+                        
+                        // Configure preview layer
+                        let preview = AVCaptureVideoPreviewLayer(session: self.session)
+                        preview.videoGravity = .resizeAspectFill
+                        
+                        // Set the frame to fill the entire view
+                        preview.frame = view.bounds
+                        
+                        view.layer.insertSublayer(preview, at: 0)
+                        self.previewLayer = preview
+                        print("✅ Preview layer configured with bounds: \(view.bounds)")
+                        
+                        // Check if calibration has been performed before
+                        let defaults = UserDefaults.standard
+                        if defaults.bool(forKey: self.hasCalibrationBeenPerformedKey) {
+                            self.hasCalibrationBeenPerformedBefore = true
+                            self.showRecalibrationPrompt = true
+                            print("✅ Calibration has been performed before")
+                        } else {
+                            print("🎯 First-time user, entering calibration mode")
+                            self.isCalibrationMode = true
+                            self.resetCalibration()
+                        }
+                        
+                        // Signal that setup is complete
+                        setupSemaphore.signal()
+                    }
+                    
+                } catch {
+                    print("❌ Error setting up camera: \(error.localizedDescription)")
                     self.session.commitConfiguration()
                     setupSemaphore.signal()
-                    return
                 }
-                
-                // Configure connection
-                if let connection = output.connection(with: .video) {
-                    if connection.isVideoMirroringSupported {
-                        connection.isVideoMirrored = false
-                    }
-                }
-                
-                self.session.commitConfiguration()
-                
-                // Store the original frame size for coordinate mapping
-                let formatDesc = device.activeFormat.formatDescription
-                let dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc)
-                let originalSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
-                
-                // Start session after configuration is complete
-                print("▶️ Starting camera session")
-                self.session.startRunning()
-                print("✅ Camera session started")
-                
-                // Update UI on main thread
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    
-                    // Update original frame size
-                    self.originalFrameSize = originalSize
-                    print("📏 Original frame size: \(originalSize)")
-                    
-                    // Configure preview layer
-                    let preview = AVCaptureVideoPreviewLayer(session: self.session)
-                    preview.videoGravity = .resizeAspectFill
-                    
-                    // Set the frame to fill the entire view
-                    preview.frame = view.bounds
-                    
-                    view.layer.insertSublayer(preview, at: 0)
-                    self.previewLayer = preview
-                    print("✅ Preview layer configured with bounds: \(view.bounds)")
-                    
-                    // Signal that setup is complete
-                    setupSemaphore.signal()
-                }
-                
-            } catch {
-                print("❌ Error setting up camera: \(error.localizedDescription)")
-                self.session.commitConfiguration()
-                setupSemaphore.signal()
             }
         }
         
@@ -298,7 +323,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             initializeCalibrationPoints(for: screenSize)
         }
     }
-    
+
     func handleCalibrationTap(at point: CGPoint) {
         guard isCalibrationMode else { return }
         
@@ -308,6 +333,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             
             // Store the user tapped point - ensure it's visible on screen
             let screenBounds = UIScreen.main.bounds
+            
+            // The point is already in the correct coordinate space for the rotated view
+            // Just ensure it's within bounds
             let boundedPoint = CGPoint(
                 x: max(10, min(point.x, screenBounds.width - 10)),
                 y: max(10, min(point.y, screenBounds.height - 10))
@@ -426,7 +454,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         // Update original frame size on main thread
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.originalFrameSize = originalSize
+            self.originalFrameSize = CGSize(width: CGFloat(originalSize.width), height: CGFloat(originalSize.height))
         }
         
         // Process object detection synchronously to avoid capturing pixelBuffer
@@ -657,6 +685,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 self.actionPublisher.send((action, confidence))
             }
             .store(in: &cancellables)
+        
+        // Check if calibration has been performed before
+        let defaults = UserDefaults.standard
+        hasCalibrationBeenPerformedBefore = defaults.bool(forKey: hasCalibrationBeenPerformedKey)
     }
 
     func resetSession() {
