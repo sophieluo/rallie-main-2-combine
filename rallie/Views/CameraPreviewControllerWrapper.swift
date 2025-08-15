@@ -21,6 +21,17 @@ struct CameraPreviewControllerWrapper: UIViewControllerRepresentable {
         
         // Start session here since we removed it from CameraView.onAppear
         controller.startSession(in: viewController.view, screenSize: landscapeSize)
+        
+        // Configure the bounding box overlay view to be transparent
+        controller.overlayView.backgroundColor = .clear
+        controller.overlayView.frame = viewController.view.bounds
+        controller.overlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        // Add the overlay view after the session is started to ensure it's on top of the preview layer
+        DispatchQueue.main.async {
+            viewController.view.addSubview(controller.overlayView)
+        }
+        
         return viewController
     }
 

@@ -176,14 +176,14 @@ struct CommandLookup {
     }
     
     /// Compute zone ID based on player position in meters.
-    /// Court size: 8.23m (width) x 5.49m (length)
+    /// Court size: 8.23m (width) x 11.885m (length)
     /// Custom zone layout with 16 zones of different sizes
     public static func zoneID(for point: CGPoint) -> Int? {
         let courtWidth: CGFloat = 8.23
-        let courtHeight: CGFloat = 5.49
+        let courtLength: CGFloat = 11.885  // Updated to use full half-court length (net to baseline)
         
         // Check if point is within court boundaries
-        guard (0..<courtWidth).contains(point.x), (0..<courtHeight).contains(point.y) else {
+        guard (0..<courtWidth).contains(point.x), (0..<courtLength).contains(point.y) else {
             print("❌ Point \(point) is out of bounds")
             return nil
         }
@@ -194,13 +194,15 @@ struct CommandLookup {
         // Define horizontal dividers (x-coordinates as percentage of court width)
         let xDividers: [CGFloat] = [0.0, 0.25, 0.5, 0.75, 1.0]
         
-        // Define vertical dividers (y-coordinates as percentage of court height)
+        // Define vertical dividers (y-coordinates as percentage of court length)
         // The zones appear to have different heights in the image
-        let yDividers: [CGFloat] = [0.0, 0.2, 0.4, 0.7, 1.0]
+        // Service line is at 6.4m from net, or about 53.8% of the court length
+        let serviceLineRatio: CGFloat = 6.4 / courtLength  // ~0.538
+        let yDividers: [CGFloat] = [0.0, 0.2, serviceLineRatio, 0.7, 1.0]
         
         // Convert normalized coordinates to actual court coordinates
         let xBoundaries = xDividers.map { $0 * courtWidth }
-        let yBoundaries = yDividers.map { $0 * courtHeight }
+        let yBoundaries = yDividers.map { $0 * courtLength }
         
         // Find which zone the point falls into
         var col = -1

@@ -31,10 +31,13 @@ class ObjectDetector: ObservableObject {
                 completion([])
                 return
             }
-
-            let screenSize = UIScreen.main.bounds.size
-            let screenWidth = screenSize.width
-            let screenHeight = screenSize.height
+            
+            // Get actual image dimensions from the pixel buffer
+            let imageWidth = CVPixelBufferGetWidth(pixelBuffer)
+            let imageHeight = CVPixelBufferGetHeight(pixelBuffer)
+            
+            // Debug print the actual image dimensions
+            print("📏 Image dimensions: \(imageWidth) × \(imageHeight)")
 
             let detected = results.compactMap { obs -> DetectedObject? in
                 let confidence = obs.confidence
@@ -42,12 +45,12 @@ class ObjectDetector: ObservableObject {
 
                 let label = obs.labels.first?.identifier ?? "Object"
                 let boundingBox = obs.boundingBox
-
-                // Convert normalized rect to screen space
-                let x = boundingBox.origin.x * screenWidth
-                let y = (1.0 - boundingBox.origin.y - boundingBox.height) * screenHeight
-                let width = boundingBox.width * screenWidth
-                let height = boundingBox.height * screenHeight
+                
+                // Convert normalized rect to image space using actual image dimensions
+                let x = boundingBox.origin.x * CGFloat(imageWidth)
+                let y = (1.0 - boundingBox.origin.y - boundingBox.height) * CGFloat(imageHeight)
+                let width = boundingBox.width * CGFloat(imageWidth)
+                let height = boundingBox.height * CGFloat(imageHeight)
 
                 var boxRect = CGRect(x: x, y: y, width: width, height: height)
 
@@ -62,15 +65,19 @@ class ObjectDetector: ObservableObject {
                     height: newHeight
                 )
 
-                // Ensure the box stays within screen bounds
-                boxRect = boxRect.intersection(CGRect(x: 0, y: 0, width: screenWidth, height: screenHeight))
+                // Ensure the box stays within image bounds
+                boxRect = boxRect.intersection(CGRect(x: 0, y: 0, width: CGFloat(imageWidth), height: CGFloat(imageHeight)))
 
                 let pixelCenter = CGPoint(x: boxRect.midX, y: boxRect.midY)
                 let bottomLeft = CGPoint(x: boxRect.minX, y: boxRect.maxY)
                 let bottomCenter = CGPoint(x: boxRect.midX, y: boxRect.maxY)
+                
+                // Debug print the detected foot position
+                print("👣 Detected foot position in image space: \(bottomCenter)")
 
                 self.bottomCenterPointPositionInImage = bottomCenter
-                self.centerPointPositionInImage = CGPoint(x: boundingBox.midX, y: boundingBox.midY)
+                self.centerPointPositionInImage = CGPoint(x: boundingBox.midX * CGFloat(imageWidth), 
+                                                         y: (1.0 - boundingBox.midY) * CGFloat(imageHeight))
                 self.centerPointInPixels = pixelCenter
                 self.bottomLeftPixel = bottomLeft
 
@@ -78,10 +85,10 @@ class ObjectDetector: ObservableObject {
                     label: label,
                     confidence: confidence,
                     rect: CGRect(
-                        x: boxRect.origin.x / screenWidth,
-                        y: boxRect.origin.y / screenHeight,
-                        width: boxRect.width / screenWidth,
-                        height: boxRect.height / screenHeight
+                        x: boxRect.origin.x / CGFloat(imageWidth),
+                        y: boxRect.origin.y / CGFloat(imageHeight),
+                        width: boxRect.width / CGFloat(imageWidth),
+                        height: boxRect.height / CGFloat(imageHeight)
                     ),
                     pixelCenter: pixelCenter,
                     bottomLeftPixel: bottomLeft,

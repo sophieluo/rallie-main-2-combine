@@ -331,14 +331,17 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             // Add the tapped point and print for debugging
             print("👆 User tapped at point: \(point) for step \(calibrationStep)")
             
-            // Store the user tapped point - ensure it's visible on screen
+            // Get the correct bounds for landscape orientation
             let screenBounds = UIScreen.main.bounds
+            let landscapeWidth = max(screenBounds.width, screenBounds.height)
+            let landscapeHeight = min(screenBounds.width, screenBounds.height)
             
-            // The point is already in the correct coordinate space for the rotated view
-            // Just ensure it's within bounds
+            print("📱 Screen bounds - Width: \(landscapeWidth), Height: \(landscapeHeight)")
+            
+            // Ensure the point is within bounds
             let boundedPoint = CGPoint(
-                x: max(10, min(point.x, screenBounds.width - 10)),
-                y: max(10, min(point.y, screenBounds.height - 10))
+                x: max(10, min(point.x, landscapeWidth - 10)),
+                y: max(10, min(point.y, landscapeHeight - 10))
             )
             
             userTappedPoints.append(boundedPoint)
@@ -600,8 +603,37 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         let trapezoidCorners = calibrationPoints.prefix(4)
         
         // Check if we have a foot position
-        guard let footPos = objectDetector.bottomCenterPointPositionInImage,
-              let projected = HomographyHelper.projectsForMap(point: footPos, using: matrix, trapezoidCorners: Array(trapezoidCorners), in: nil, screenSize: nil) else {
+        guard let footPos = objectDetector.bottomCenterPointPositionInImage else {
+            // Only print every few seconds to avoid log spam
+            if let last = lastFootPositionWarningTime, Date().timeIntervalSince(last) < 2.0 {
+                return
+            }
+            lastFootPositionWarningTime = Date()
+            print("ℹ️ No foot position detected")
+            return
+        }
+        
+        // Transform foot position to match calibration point orientation
+        // The camera is in portrait but UI is in landscape, so we need to transform
+        // the foot position coordinates to match the calibration points
+        
+        // Check if we have valid frame dimensions
+        let originalSize = originalFrameSize
+        if originalSize.width == 0 || originalSize.height == 0 {
+            print("⚠️ Invalid original frame size: \(originalSize)")
+            return
+        }
+        
+        // Transform coordinates to match the orientation of calibration points
+        // For portrait to landscape right transformation:
+        let transformedFootPos = CGPoint(
+            x: footPos.y,
+            y: originalSize.width - footPos.x
+        )
+        
+        print("🦶 Original foot position: \(footPos), transformed: \(transformedFootPos)")
+        
+        guard let projected = HomographyHelper.projectsForMap(point: transformedFootPos, using: matrix, trapezoidCorners: Array(trapezoidCorners), in: nil, screenSize: nil) else {
             // Only print every few seconds to avoid log spam
             if let last = lastFootPositionWarningTime, Date().timeIntervalSince(last) < 2.0 {
                 return
