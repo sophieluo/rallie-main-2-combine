@@ -22,7 +22,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     private var lastFootPositionWarningTime: Date? = nil
 
     // MARK: - Vision
-    private(set) var overlayView = BoundingBoxOverlayView()
+    // Removed overlayView reference
         
     private let objectDetector = ObjectDetector()
     private let playerDetector = PlayerDetector()
@@ -30,10 +30,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         
     var detectedObjects: [DetectedObject] = [] {
         didSet {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.overlayView.boxes = self.detectedObjects
-            }
+            // No need to update overlayView.boxes anymore
         }
     }
 
@@ -624,14 +621,32 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             return
         }
         
-        // Transform coordinates to match the orientation of calibration points
-        // For portrait to landscape right transformation:
-        let transformedFootPos = CGPoint(
-            x: footPos.y,
-            y: originalSize.width - footPos.x
-        )
+        // Get the screen size for calibration
+        let screenBounds = UIScreen.main.bounds
+        let screenWidth = screenBounds.width
+        let screenHeight = screenBounds.height
         
-        print("🦶 Original foot position: \(footPos), transformed: \(transformedFootPos)")
+        // Debug print screen dimensions
+        print("📱 Screen dimensions in transformation: width=\(screenWidth), height=\(screenHeight)")
+        
+        // CRITICAL FIX: The camera is in portrait orientation (1080×1920) but the UI is in landscape
+        // We need to map the foot position from the portrait camera space to the landscape UI space
+        // where the calibration points were defined
+        
+        // First, normalize the foot position in the image space (0-1)
+        let normalizedX = footPos.x / originalSize.width
+        let normalizedY = footPos.y / originalSize.height
+        
+        // Then, map to the screen space in landscape orientation
+        // For portrait to landscape right transformation:
+        // - normalizedY becomes the new x-coordinate
+        // - (1 - normalizedX) becomes the new y-coordinate
+        let transformedX = normalizedY * screenWidth
+        let transformedY = (1 - normalizedX) * screenHeight
+        
+        let transformedFootPos = CGPoint(x: transformedX, y: transformedY)
+        
+        print("🦶 Original foot position: \(footPos), normalized: (\(normalizedX), \(normalizedY)), transformed: \(transformedFootPos)")
         
         guard let projected = HomographyHelper.projectsForMap(point: transformedFootPos, using: matrix, trapezoidCorners: Array(trapezoidCorners), in: nil, screenSize: nil) else {
             // Only print every few seconds to avoid log spam

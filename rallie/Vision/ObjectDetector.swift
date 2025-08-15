@@ -35,9 +35,6 @@ class ObjectDetector: ObservableObject {
             // Get actual image dimensions from the pixel buffer
             let imageWidth = CVPixelBufferGetWidth(pixelBuffer)
             let imageHeight = CVPixelBufferGetHeight(pixelBuffer)
-            
-            // Debug print the actual image dimensions
-            print("📏 Image dimensions: \(imageWidth) × \(imageHeight)")
 
             let detected = results.compactMap { obs -> DetectedObject? in
                 let confidence = obs.confidence
@@ -46,7 +43,12 @@ class ObjectDetector: ObservableObject {
                 let label = obs.labels.first?.identifier ?? "Object"
                 let boundingBox = obs.boundingBox
                 
+                // Debug print the original bounding box data from Vision
+                print("🔍 Original Vision bounding box: \(boundingBox)")
+                print("🔍 Image dimensions: width=\(imageWidth), height=\(imageHeight)")
+                
                 // Convert normalized rect to image space using actual image dimensions
+                // Use direct mapping without rotation - no 90-degree transformation
                 let x = boundingBox.origin.x * CGFloat(imageWidth)
                 let y = (1.0 - boundingBox.origin.y - boundingBox.height) * CGFloat(imageHeight)
                 let width = boundingBox.width * CGFloat(imageWidth)
@@ -75,50 +77,43 @@ class ObjectDetector: ObservableObject {
                 // Debug print the detected foot position
                 print("👣 Detected foot position in image space: \(bottomCenter)")
 
+                // Store the actual pixel coordinates for the foot position
                 self.bottomCenterPointPositionInImage = bottomCenter
                 self.centerPointPositionInImage = CGPoint(x: boundingBox.midX * CGFloat(imageWidth), 
                                                          y: (1.0 - boundingBox.midY) * CGFloat(imageHeight))
                 self.centerPointInPixels = pixelCenter
                 self.bottomLeftPixel = bottomLeft
-
+                
+                // Create a normalized rect for SwiftUI to display
+                let normalizedRect = CGRect(
+                    x: boxRect.origin.x / CGFloat(imageWidth),
+                    y: boxRect.origin.y / CGFloat(imageHeight),
+                    width: boxRect.width / CGFloat(imageWidth),
+                    height: boxRect.height / CGFloat(imageHeight)
+                )
+                
                 return DetectedObject(
                     label: label,
                     confidence: confidence,
-                    rect: CGRect(
-                        x: boxRect.origin.x / CGFloat(imageWidth),
-                        y: boxRect.origin.y / CGFloat(imageHeight),
-                        width: boxRect.width / CGFloat(imageWidth),
-                        height: boxRect.height / CGFloat(imageHeight)
-                    ),
-                    pixelCenter: pixelCenter,
-                    bottomLeftPixel: bottomLeft,
-                    bottomCenterPixel: bottomCenter
+                    rect: normalizedRect
                 )
             }
-
-            completion(detected)
-        }
-
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try handler.perform([request])
-            } catch {
-                print("Vision error: \(error)")
-                completion([])
+            
+            DispatchQueue.main.async {
+                completion(detected)
             }
         }
+        
+        request.imageCropAndScaleOption = .scaleFit
+        
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        try? handler.perform([request])
     }
-
 }
-
 
 struct DetectedObject: Identifiable {
     let id = UUID()
     let label: String
     let confidence: VNConfidence
     let rect: CGRect           // Normalized
-    let pixelCenter: CGPoint
-    let bottomLeftPixel: CGPoint
-    let bottomCenterPixel: CGPoint
 }
