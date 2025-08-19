@@ -12,7 +12,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     // Singleton instance for shared access
     static let shared = CameraController()
     
-    private let session = AVCaptureSession()
+    let session = AVCaptureSession()
     public var previewLayer: AVCaptureVideoPreviewLayer?
     private var output: AVCaptureVideoDataOutput?
     private var lastLogTime: Date? = nil
@@ -78,7 +78,10 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var playerPositions: [CGPoint] = []
     @Published var detectedJoints: [CGPoint?] = Array(repeating: nil, count: 18)
     @Published var originalFrameSize: CGSize = .zero
-
+    
+    weak var preView : UIView?
+    
+    
 //    // MARK: - Coordinate Transformation
 //    // Helper function to rotate a point 90 degrees clockwise within the frame
 //    func rotatePoint90DegreesClockwise(_ point: CGPoint, in size: CGSize) -> CGPoint {
@@ -101,11 +104,11 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     private var lastPublishTime: Date?
     private let publishInterval: TimeInterval = 0.1
     
-    func startSession(in view: UIView, screenSize: CGSize) {
+    func startSession(in view: UIView? = nil, screenSize: CGSize? = nil) {
         print("🎥 Starting camera session setup")
         
         // Create a semaphore to synchronize session setup
-        let setupSemaphore = DispatchSemaphore(value: 0)
+//        let setupSemaphore = DispatchSemaphore(value: 0)
         
         // Stop the session first to ensure clean state
         if session.isRunning {
@@ -135,7 +138,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             // Continue with session setup on background thread
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
-                    setupSemaphore.signal()
+//                    setupSemaphore.signal()
                     return
                 }
                 
@@ -144,7 +147,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 // Get camera device
                 guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
                     print("❌ Failed to get camera device")
-                    setupSemaphore.signal()
+//                    setupSemaphore.signal()
                     return
                 }
                 
@@ -158,7 +161,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     guard self.session.canAddInput(input) else {
                         print("❌ Cannot add camera input")
                         self.session.commitConfiguration()
-                        setupSemaphore.signal()
+//                        setupSemaphore.signal()
                         return
                     }
                     self.session.addInput(input)
@@ -172,7 +175,7 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     guard self.session.canAddOutput(output) else {
                         print("❌ Cannot add video output")
                         self.session.commitConfiguration()
-                        setupSemaphore.signal()
+//                        setupSemaphore.signal()
                         return
                     }
                     self.session.addOutput(output)
@@ -181,8 +184,13 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     
                     // Configure video orientation
                     if let connection = output.connection(with: .video) {
-                        if connection.isVideoOrientationSupported {
-                            connection.videoOrientation = .portrait
+                        if #available(iOS 17.0, *) {
+                            connection.videoRotationAngle = 0
+                        }
+                            else {
+                            if connection.isVideoOrientationSupported {
+                                connection.videoOrientation = .landscapeRight
+                            }
                         }
                         if connection.isVideoMirroringSupported {
                             connection.isVideoMirrored = false
@@ -208,18 +216,9 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                         // Update original frame size
                         self.originalFrameSize = CGSize(width: CGFloat(originalSize.width), height: CGFloat(originalSize.height))
                         print("📏 Original frame size: \(self.originalFrameSize)")
-                        
-                        // Configure preview layer
-                        let preview = AVCaptureVideoPreviewLayer(session: self.session)
-                        preview.videoGravity = .resizeAspectFill
-                        
-                        // Set the frame to fill the entire view
-                        preview.frame = view.bounds
-                        
-                        view.layer.insertSublayer(preview, at: 0)
-                        self.previewLayer = preview
-                        print("✅ Preview layer configured with bounds: \(view.bounds)")
-                        
+                        self.setupPreviewLayer()
+
+//                        
                         // Check if calibration has been performed before
                         let defaults = UserDefaults.standard
                         if defaults.bool(forKey: self.hasCalibrationBeenPerformedKey) {
@@ -233,30 +232,47 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                         }
                         
                         // Signal that setup is complete
-                        setupSemaphore.signal()
+//                        setupSemaphore.signal()
                     }
                     
                 } catch {
                     print("❌ Error setting up camera: \(error.localizedDescription)")
                     self.session.commitConfiguration()
-                    setupSemaphore.signal()
+//                    setupSemaphore.signal()
                 }
             }
         }
         
         // Wait for a short timeout to ensure setup completes or fails gracefully
-        _ = setupSemaphore.wait(timeout: .now() + 5.0)
+//        _ = setupSemaphore.wait(timeout: .now() + 5.0)
     }
     
     func updatePreviewFrame(to bounds: CGRect) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            // Ensure the preview layer fills the entire view in landscape orientation
-            self.previewLayer?.frame = bounds
-            self.previewLayer?.videoGravity = .resizeAspectFill
-        }
+//        DispatchQueue.main.async { [weak self] in
+//            guard let self = self else { return }
+//            // Ensure the preview layer fills the entire view in landscape orientation
+//            self.previewLayer?.frame = bounds
+//            self.previewLayer?.videoGravity = .resizeAspectFill
+//        }
     }
 
+    private func setupPreviewLayer() {
+        guard let preView = self.preView else {
+            return
+        }
+        if previewLayer != nil {
+            previewLayer?.removeFromSuperlayer()
+        }
+        previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer?.videoGravity = .resizeAspectFill
+        previewLayer?.frame = .init(x: 0, y: 0, width: max(UIScreen.main.bounds.size.width, UIScreen.main.bounds.size.height), height: min(UIScreen.main.bounds.size.width, UIScreen.main.bounds.size.height))
+        previewLayer?.connection?.videoRotationAngle = 0
+        if let previewLayer = previewLayer {
+            preView.layer.addSublayer(previewLayer)
+        }
+    }
+    
+    
     func stopSession() {
         print("🛑 Stopping camera session")
         
@@ -752,13 +768,6 @@ class CameraController: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         playerPositionFilter = nil
         projectedPlayerPosition = nil
         playerSpeed = 0.0
-        
-        // Start session again if there's a valid preview layer
-        if let previewView = previewLayer?.superlayer as? UIView,
-           let screenSize = previewLayer?.bounds.size {
-            startSession(in: previewView, screenSize: screenSize)
-        } else {
-            print("⚠️ Cannot restart session: no valid preview layer")
-        }
+        self.startSession()
     }
 }

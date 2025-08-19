@@ -210,13 +210,15 @@ struct SettingsView: View {
                 BluetoothScannerView(bluetoothManager: bluetoothManager)
             }
             .fullScreenCover(isPresented: $showCamera) {
-                if #available(iOS 16.0, *) {
-                    LandscapeWrapper(content: CameraView(cameraController: cameraController))
-                } else {
-                    // Fallback for earlier iOS versions
-                    Text("Camera tracking requires iOS 16 or later")
-                        .padding( )
-                }
+//                if #available(iOS 16.0, *) {
+////                    let view = CameraView(cameraController: cameraController)
+////                    LandscapeWrapper<CameraView>(content: view)
+                    CameraView(cameraController: cameraController)
+//                } else {
+//                    // Fallback for earlier iOS versions
+//                    Text("Camera tracking requires iOS 16 or later")
+//                        .padding( )
+//                }
             }
             .onAppear {
                 // Initialize the slider with the current value from LogicManager
@@ -387,3 +389,35 @@ struct SettingsView_Previews: PreviewProvider {
     }
 }
 #endif
+
+struct LandscapeView: View {
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        ZStack {
+            Color.orange
+            VStack {
+                Text("横屏模式")
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Button("返回竖屏") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .padding()
+                .background(Color.white)
+                .foregroundColor(.black)
+                .cornerRadius(10)
+            }
+        }
+        .edgesIgnoringSafeArea(.all)
+        .onAppear {
+            // 进入时锁定为横屏
+            OrientationController.shared.lockOrientation(.landscape)
+        }
+        .onDisappear {
+            // 离开时恢复竖屏
+            OrientationController.shared.lockOrientation(.portrait)
+        }
+    }
+}

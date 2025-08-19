@@ -8,58 +8,51 @@
 import SwiftUI
 import UIKit
 
-class LandscapeHostingController<Content: View>: UIHostingController<Content> {
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        return .landscapeRight
+// MARK: - 1. 通用的横屏容器 UIViewController
+// 使用泛型 <Content: View>，表示它可以承载任何 SwiftUI View
+class LandscapeHostingController<Content: View>: UIViewController {
+    
+    var hostingController: UIHostingController<Content>!
+    
+    // 通过初始化方法接收要展示的 SwiftUI View
+    init(rootView: Content) {
+        super.init(nibName: nil, bundle: nil)
+        // 创建 UIHostingController 时传入传入的 rootView
+        self.hostingController = UIHostingController(rootView: rootView)
     }
-
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        return .landscapeRight
-    }
-
-    override var shouldAutorotate: Bool {
-        return false
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        forceLandscapeOrientation()
-    }
-    
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        forceLandscapeOrientation()
         
-        // Add notification observer for device rotation
-        NotificationCenter.default.addObserver(self, 
-                                              selector: #selector(orientationChanged), 
-                                              name: UIDevice.orientationDidChangeNotification, 
-                                              object: nil)
-    }
-    
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
+        addChild(hostingController)
+        view.addSubview(hostingController.view)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
         
-        // Remove notification observer
-        NotificationCenter.default.removeObserver(self, 
-                                                name: UIDevice.orientationDidChangeNotification, 
-                                                object: nil)
+        NSLayoutConstraint.activate([
+            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        
+        hostingController.didMove(toParent: self)
     }
     
-    private func forceLandscapeOrientation() {
-        // Force landscape orientation
-        if #available(iOS 16.0, *) {
-            // iOS 16+ approach
-            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
-        } else {
-            // Pre-iOS 16 approach
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-        }
+    
+    // MARK: - 强制横屏设置
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+         return .landscapeRight // 或者只支持左横屏
     }
     
-    @objc private func orientationChanged(_ notification: Notification) {
-        // Force back to landscape if device orientation changes
-        forceLandscapeOrientation()
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        return .landscapeRight // 推荐以左横屏展示
+    }
+    
+    override var shouldAutorotate: Bool {
+        return false // 如果想锁定在一个方向，返回 false
     }
 }

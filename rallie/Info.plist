@@ -2,27 +2,26 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleGetInfoString</key>
-	<string></string>
-	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
-	<false/>
-	<key>BLE_SERVICE_UUID</key>
-	<string>12345678-1234-1234-1234-123456789abc</string>
 	<key>BLE_COMMAND_CHARACTERISTIC_UUID</key>
 	<string>abcd1234-1234-1234-1234-abcdef123456</string>
 	<key>BLE_RESPONSE_CHARACTERISTIC_UUID</key>
 	<string>abcd1234-1234-1234-1234-abcdef123456</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app uses Bluetooth to connect to the Rallie ball machine</string>
+	<key>BLE_SERVICE_UUID</key>
+	<string>12345678-1234-1234-1234-123456789abc</string>
+	<key>CFBundleGetInfoString</key>
+	<string></string>
+	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
+	<false/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~iphone</key>
+	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
